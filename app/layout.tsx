@@ -15,16 +15,33 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <nav className="bg-black text-white p-3">
-          <div className="max-w-6xl mx-auto flex flex-wrap gap-3 text-sm">
-            <Link href="/">Login</Link>
-            <Link href="/dashboard">Dashboard</Link>
-            <Link href="/check-out">Check Out</Link>
-            <Link href="/check-in">Check In</Link>
-            <Link href="/cars">Cars</Link>
-            <Link href="/people">People</Link>
-            <Link href="/history">History</Link>
-            <Link href="/admin">Admin</Link>
+        <nav className="bg-[#367C2B] text-white p-3 shadow">
+          <div className="max-w-6xl mx-auto flex flex-wrap gap-4 text-sm font-semibold items-center">
+            <Link href="/dashboard" className="text-[#FFDE00] font-bold text-base">
+              JDC Transportation
+            </Link>
+
+            <Link href="/dashboard" className="hover:text-[#FFDE00]">
+              Dashboard
+            </Link>
+            <Link href="/check-out" className="hover:text-[#FFDE00]">
+              Check Out
+            </Link>
+            <Link href="/check-in" className="hover:text-[#FFDE00]">
+              Check In
+            </Link>
+            <Link href="/cars" className="hover:text-[#FFDE00]">
+              Cars
+            </Link>
+            <Link href="/people" className="hover:text-[#FFDE00]">
+              People
+            </Link>
+            <Link href="/history" className="hover:text-[#FFDE00]">
+              History
+            </Link>
+            <Link href="/admin" className="hover:text-[#FFDE00]">
+              Admin
+            </Link>
           </div>
         </nav>
 

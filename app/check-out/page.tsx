@@ -3,6 +3,14 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../src/lib/supabase";
 
+const ROLE_OPTIONS = [
+  "Player",
+  "PGA Staff",
+  "Tournament Staff",
+  "Transportation Staff",
+  "Misc",
+];
+
 type Vehicle = {
   id: number;
   car_number: number;
@@ -21,44 +29,29 @@ type Person = {
   phone: string | null;
   email: string | null;
   role: string | null;
-  organization: string | null;
 };
 
 export default function CheckOutPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
-
   const [location, setLocation] = useState("");
-  const [vehicleSearch, setVehicleSearch] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-
   const [personSearch, setPersonSearch] = useState("");
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
-
   const [onBehalfOf, setOnBehalfOf] = useState("");
   const [checkedOutBy, setCheckedOutBy] = useState("");
   const [notes, setNotes] = useState("");
 
   async function loadData() {
-    const { data: vehicleData, error: vehicleError } = await supabase
+    const { data: vehicleData } = await supabase
       .from("vehicles")
       .select("*")
       .order("car_number");
 
-    if (vehicleError) {
-      alert(vehicleError.message);
-      return;
-    }
-
-    const { data: peopleData, error: peopleError } = await supabase
+    const { data: peopleData } = await supabase
       .from("people")
-      .select("*")
+      .select("id, first_name, last_name, phone, email, role")
       .order("last_name");
-
-    if (peopleError) {
-      alert(peopleError.message);
-      return;
-    }
 
     setVehicles(vehicleData || []);
     setPeople(peopleData || []);
@@ -82,18 +75,10 @@ export default function CheckOutPage() {
       (!location || v.current_location === location)
   );
 
-  const matchingVehicles = availableVehicles
-    .filter((v) => {
-      const text =
-        `${v.car_number} ${v.color} ${v.make} ${v.model} ${v.type} ${v.current_location}`.toLowerCase();
-      return text.includes(vehicleSearch.toLowerCase());
-    })
-    .slice(0, 8);
-
   const matchingPeople = people
     .filter((p) => {
       const text =
-        `${p.first_name} ${p.last_name} ${p.phone} ${p.email} ${p.role} ${p.organization}`.toLowerCase();
+        `${p.first_name} ${p.last_name} ${p.phone} ${p.email} ${p.role}`.toLowerCase();
       return text.includes(personSearch.toLowerCase());
     })
     .slice(0, 8);
@@ -107,20 +92,16 @@ export default function CheckOutPage() {
 
     const phone = prompt("Phone?") || "";
     const email = prompt("Email?") || "";
-    const role = prompt("Role? Example: Golfer, Caddie, Staff") || "";
-    const organization = prompt("Organization?") || "";
+
+    const roleInput =
+      prompt(`Role? Choose one:\n${ROLE_OPTIONS.join("\n")}`) || "Misc";
+
+    const role = ROLE_OPTIONS.includes(roleInput) ? roleInput : "Misc";
 
     const { data, error } = await supabase
       .from("people")
-      .insert({
-        first_name: firstName,
-        last_name: lastName,
-        phone,
-        email,
-        role,
-        organization,
-      })
-      .select()
+      .insert({ first_name: firstName, last_name: lastName, phone, email, role })
+      .select("id, first_name, last_name, phone, email, role")
       .single();
 
     if (error) {
@@ -134,20 +115,9 @@ export default function CheckOutPage() {
   }
 
   async function submitCheckout() {
-    if (!selectedVehicle) {
-      alert("Please select a car.");
-      return;
-    }
-
-    if (!selectedPerson) {
-      alert("Please select a person.");
-      return;
-    }
-
-    if (!checkedOutBy.trim()) {
-      alert("Please enter who checked this out.");
-      return;
-    }
+    if (!selectedVehicle) return alert("Please select a car.");
+    if (!selectedPerson) return alert("Please select a person.");
+    if (!checkedOutBy.trim()) return alert("Please enter who checked this out.");
 
     const now = new Date().toISOString();
 
@@ -167,38 +137,28 @@ export default function CheckOutPage() {
       status: "Checked Out",
     });
 
-    if (checkoutError) {
-      alert(checkoutError.message);
-      return;
-    }
+    if (checkoutError) return alert(checkoutError.message);
 
     const { error: vehicleError } = await supabase
       .from("vehicles")
-      .update({
-        status: "Checked Out",
-      })
+      .update({ status: "Checked Out" })
       .eq("id", selectedVehicle.id);
 
-    if (vehicleError) {
-      alert(vehicleError.message);
-      return;
-    }
+    if (vehicleError) return alert(vehicleError.message);
 
     alert(`Car #${selectedVehicle.car_number} checked out.`);
 
-    setVehicleSearch("");
     setSelectedVehicle(null);
     setPersonSearch("");
     setSelectedPerson(null);
     setOnBehalfOf("");
     setCheckedOutBy("");
     setNotes("");
-
     loadData();
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 p-4">
+    <main className="min-h-screen bg-[#F5F5F5] p-4">
       <h1 className="text-3xl font-bold mb-4">Check Out</h1>
 
       <div className="bg-white rounded-lg shadow p-4 max-w-xl">
@@ -207,7 +167,6 @@ export default function CheckOutPage() {
           value={location}
           onChange={(e) => {
             setLocation(e.target.value);
-            setVehicleSearch("");
             setSelectedVehicle(null);
           }}
           className="border rounded p-3 w-full mb-4"
@@ -221,50 +180,30 @@ export default function CheckOutPage() {
         </select>
 
         <label className="block font-semibold mb-1">Available Car</label>
-        <input
-          value={vehicleSearch}
+        <select
+          value={selectedVehicle?.id || ""}
           onChange={(e) => {
-            setVehicleSearch(e.target.value);
-            setSelectedVehicle(null);
+            const vehicle = availableVehicles.find(
+              (v) => v.id === Number(e.target.value)
+            );
+            setSelectedVehicle(vehicle || null);
           }}
-          placeholder="Type car #, model, color..."
-          className="border rounded p-3 w-full"
-        />
-
-        {!selectedVehicle && vehicleSearch && (
-          <div className="border rounded mt-2 mb-4 bg-white overflow-hidden">
-            {matchingVehicles.length === 0 ? (
-              <div className="p-3 text-gray-500">No available cars found.</div>
-            ) : (
-              matchingVehicles.map((v) => (
-                <button
-                  key={v.id}
-                  onClick={() => {
-                    setSelectedVehicle(v);
-                    setVehicleSearch(
-                      `Car #${v.car_number} — ${v.color || ""} ${
-                        v.make || ""
-                      } ${v.model || ""} — ${v.type || ""}`
-                    );
-                  }}
-                  className="block w-full text-left p-3 border-b hover:bg-gray-100"
-                >
-                  <div className="font-semibold">Car #{v.car_number}</div>
-                  <div className="text-sm text-gray-600">
-                    {v.color || ""} {v.make || ""} {v.model || ""} —{" "}
-                    {v.type || ""} — {v.current_location || "Unknown"}
-                  </div>
-                </button>
-              ))
-            )}
-          </div>
-        )}
+          className="border rounded p-3 w-full mb-4"
+        >
+          <option value="">Select a car...</option>
+          {availableVehicles.map((v) => (
+            <option key={v.id} value={v.id}>
+              Car #{v.car_number} — {v.model || ""} — {v.type || ""} —{" "}
+              {v.color || ""}
+            </option>
+          ))}
+        </select>
 
         {selectedVehicle && (
-          <div className="bg-blue-50 border border-blue-200 rounded p-3 my-4">
+          <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 mb-4">
             Selected: Car #{selectedVehicle.car_number} —{" "}
-            {selectedVehicle.color || ""} {selectedVehicle.make || ""}{" "}
-            {selectedVehicle.model || ""}
+            {selectedVehicle.model || ""} — {selectedVehicle.type || ""} —{" "}
+            {selectedVehicle.color || ""}
           </div>
         )}
 
@@ -275,7 +214,7 @@ export default function CheckOutPage() {
             setPersonSearch(e.target.value);
             setSelectedPerson(null);
           }}
-          placeholder="Type golfer/staff name..."
+          placeholder="Type player/staff name..."
           className="border rounded p-3 w-full"
         />
 
@@ -284,10 +223,9 @@ export default function CheckOutPage() {
             {matchingPeople.length === 0 ? (
               <div className="p-3">
                 <p className="text-gray-500 mb-2">No people found.</p>
-
                 <button
                   onClick={addNewPerson}
-                  className="bg-green-600 text-white px-4 py-2 rounded w-full"
+                  className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-2 rounded w-full"
                 >
                   Add New Person
                 </button>
@@ -307,8 +245,7 @@ export default function CheckOutPage() {
                       {p.first_name} {p.last_name}
                     </div>
                     <div className="text-sm text-gray-600">
-                      {p.role || "Person"}
-                      {p.organization ? ` — ${p.organization}` : ""}
+                      {p.role || "Misc"}
                       {p.phone ? ` — ${p.phone}` : ""}
                     </div>
                   </button>
@@ -316,7 +253,7 @@ export default function CheckOutPage() {
 
                 <button
                   onClick={addNewPerson}
-                  className="block w-full text-left p-3 bg-green-50 text-green-700 font-semibold hover:bg-green-100"
+                  className="block w-full text-left p-3 bg-[#FFDE00]/20 text-[#1F4E1A] font-semibold hover:bg-[#FFDE00]/30"
                 >
                   + Add New Person
                 </button>
@@ -326,9 +263,9 @@ export default function CheckOutPage() {
         )}
 
         {selectedPerson && (
-          <div className="bg-blue-50 border border-blue-200 rounded p-3 my-4">
-            Selected: {selectedPerson.first_name} {selectedPerson.last_name}
-            {selectedPerson.role ? ` — ${selectedPerson.role}` : ""}
+          <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 my-4">
+            Selected: {selectedPerson.first_name} {selectedPerson.last_name} —{" "}
+            {selectedPerson.role || "Misc"}
           </div>
         )}
 
@@ -358,7 +295,7 @@ export default function CheckOutPage() {
 
         <button
           onClick={submitCheckout}
-          className="bg-blue-600 text-white px-4 py-3 rounded w-full font-semibold"
+          className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded w-full font-semibold"
         >
           Check Out Car
         </button>
