@@ -24,6 +24,9 @@ export default function RootLayout({
             <Link href="/dashboard" className="hover:text-[#FFDE00]">
               Dashboard
             </Link>
+            <Link href="/player-arrivals" className="hover:text-[#FFDE00]">
+              Player Arrivals
+            </Link>
             <Link href="/check-out" className="hover:text-[#FFDE00]">
               Check Out
             </Link>
