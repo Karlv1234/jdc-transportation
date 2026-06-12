@@ -24,24 +24,31 @@ export default function RootLayout({
             <Link href="/dashboard" className="hover:text-[#FFDE00]">
               Dashboard
             </Link>
-            <Link href="/player-arrivals" className="hover:text-[#FFDE00]">
-              Player Arrivals
-            </Link>
+
             <Link href="/check-out" className="hover:text-[#FFDE00]">
               Check Out
             </Link>
+
             <Link href="/check-in" className="hover:text-[#FFDE00]">
               Check In
             </Link>
+
+            <Link href="/player-arrivals" className="hover:text-[#FFDE00]">
+              Arrivals
+            </Link>
+
             <Link href="/cars" className="hover:text-[#FFDE00]">
               Cars
             </Link>
+
             <Link href="/people" className="hover:text-[#FFDE00]">
               People
             </Link>
+
             <Link href="/history" className="hover:text-[#FFDE00]">
               History
             </Link>
+
             <Link href="/admin" className="hover:text-[#FFDE00]">
               Admin
             </Link>
