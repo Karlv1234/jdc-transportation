@@ -3,163 +3,204 @@
 import { useState } from "react";
 import { supabase } from "../../../src/lib/supabase";
 
-const LOCATION_OPTIONS = [
-  "Airport",
-  "Trailer",
-  "Return Lot",
-  "On Course",
-  "Smart Lexus",
-  "Checked Out",
+type CsvRow = Record<string, string>;
+
+const carHeaders = [
+  "car_number",
+  "make",
+  "model",
+  "type",
+  "color",
+  "vin",
+  "dealership",
+  "current_location",
+  "status",
+  "notes",
 ];
 
-type Vehicle = {
-  id: number;
-  car_number: number;
-};
+const peopleHeaders = ["first_name", "last_name", "phone", "email", "role", "notes"];
 
-export default function MoveCarsPage() {
-  const [carNumbersText, setCarNumbersText] = useState("");
-  const [newLocation, setNewLocation] = useState("");
+function downloadTemplate(filename: string, headers: string[]) {
+  const csv = headers.join(",") + "\n";
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+function parseCsv(text: string): CsvRow[] {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split(",").map((h) => h.trim());
+
+  return lines.slice(1).map((line) => {
+    const values = line.split(",").map((v) => v.trim());
+    const row: CsvRow = {};
+
+    headers.forEach((header, index) => {
+      row[header] = values[index] || "";
+    });
+
+    return row;
+  });
+}
+
+export default function ImportPage() {
+  const [carFileName, setCarFileName] = useState("");
+  const [peopleFileName, setPeopleFileName] = useState("");
   const [message, setMessage] = useState("");
-  const [missingCars, setMissingCars] = useState<number[]>([]);
 
-  function parseCarNumbers(text: string) {
-    return Array.from(
-      new Set(
-        text
-          .split(/[,;\n\r\t ]+/)
-          .map((value) => Number(value.trim()))
-          .filter((value) => Number.isInteger(value) && value > 0)
-      )
-    );
+  async function importCars(file: File) {
+    setCarFileName(file.name);
+    setMessage("Importing cars...");
+
+    const text = await file.text();
+    const rows = parseCsv(text);
+
+    let imported = 0;
+
+    for (const row of rows) {
+      if (!row.car_number) continue;
+
+      const { error } = await supabase.from("vehicles").upsert(
+        {
+          car_number: Number(row.car_number),
+          make: row.make || "Lexus",
+          model: row.model || "",
+          type: row.type || "",
+          color: row.color || "",
+          vin: row.vin || "",
+          dealership: row.dealership || "",
+          current_location: row.current_location || "Trailer",
+          status: row.status || "Available",
+          notes: row.notes || "",
+        },
+        { onConflict: "car_number" }
+      );
+
+      if (error) {
+        alert(error.message);
+        setMessage("Car import stopped because of an error.");
+        return;
+      }
+
+      imported++;
+    }
+
+    setMessage(`Imported/updated ${imported} car(s).`);
   }
 
-  async function moveCars() {
-    setMessage("");
-    setMissingCars([]);
+  async function importPeople(file: File) {
+    setPeopleFileName(file.name);
+    setMessage("Importing people...");
 
-    const carNumbers = parseCarNumbers(carNumbersText);
+    const text = await file.text();
+    const rows = parseCsv(text);
 
-    if (carNumbers.length === 0) {
-      alert("Enter at least one car number.");
-      return;
+    let imported = 0;
+
+    for (const row of rows) {
+      if (!row.first_name || !row.last_name) continue;
+
+      const { error } = await supabase.from("people").insert({
+        first_name: row.first_name,
+        last_name: row.last_name,
+        phone: row.phone || "",
+        email: row.email || "",
+        role: row.role || "Misc",
+        notes: row.notes || "",
+      });
+
+      if (error) {
+        alert(error.message);
+        setMessage("People import stopped because of an error.");
+        return;
+      }
+
+      imported++;
     }
 
-    if (!newLocation) {
-      alert("Select a new location.");
-      return;
-    }
-
-    const { data: foundCars, error: findError } = await supabase
-      .from("vehicles")
-      .select("id, car_number")
-      .in("car_number", carNumbers);
-
-    if (findError) {
-      alert(findError.message);
-      return;
-    }
-
-    const found = (foundCars || []) as Vehicle[];
-    const foundNumbers = found.map((car) => car.car_number);
-
-    const missing = carNumbers.filter(
-      (number) => !foundNumbers.includes(number)
-    );
-
-    if (found.length === 0) {
-      setMissingCars(missing);
-      setMessage("No matching cars found.");
-      return;
-    }
-
-    const { error: updateError } = await supabase
-      .from("vehicles")
-      .update({
-        current_location: newLocation,
-      })
-      .in("car_number", foundNumbers);
-
-    if (updateError) {
-      alert(updateError.message);
-      return;
-    }
-
-    setMissingCars(missing);
-    setMessage(
-      `Moved ${found.length} car(s) to ${newLocation}. ${
-        missing.length > 0 ? `${missing.length} car number(s) not found.` : ""
-      }`
-    );
-  }
-
-  function clearForm() {
-    setCarNumbersText("");
-    setNewLocation("");
-    setMessage("");
-    setMissingCars([]);
+    setMessage(`Imported ${imported} people.`);
   }
 
   return (
     <main className="min-h-screen bg-[#F5F5F5] p-4">
-      <h1 className="text-3xl font-bold mb-4">Mass Move Cars</h1>
+      <h1 className="text-3xl font-bold mb-4">Import Cars & People</h1>
 
-      <div className="bg-white rounded-lg shadow p-4 max-w-2xl border-t-4 border-[#367C2B]">
-        <p className="text-sm text-gray-600 mb-4">
-          Enter car numbers separated by commas, semicolons, spaces, or new
-          lines. This updates the vehicle location only.
-        </p>
+      <div className="grid gap-4 max-w-2xl">
+        <div className="bg-white rounded-lg shadow p-4 border-t-4 border-[#367C2B]">
+          <h2 className="text-xl font-bold mb-2 text-[#1F4E1A]">Import Cars</h2>
 
-        <label className="block font-semibold mb-1">Car Numbers</label>
-        <textarea
-          value={carNumbersText}
-          onChange={(e) => setCarNumbersText(e.target.value)}
-          placeholder="Example: 1, 2, 3; 14; 22"
-          className="border rounded p-3 w-full mb-4 min-h-32"
-        />
-
-        <label className="block font-semibold mb-1">Move To Location</label>
-        <select
-          value={newLocation}
-          onChange={(e) => setNewLocation(e.target.value)}
-          className="border rounded p-3 w-full mb-4"
-        >
-          <option value="">Select location...</option>
-          {LOCATION_OPTIONS.map((location) => (
-            <option key={location} value={location}>
-              {location}
-            </option>
-          ))}
-        </select>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <button
-            onClick={moveCars}
-            className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded font-semibold"
-          >
-            Move Cars
-          </button>
+          <p className="text-sm text-gray-600 mb-3">
+            Upload a CSV of vehicles. Existing cars update based on car number.
+          </p>
 
           <button
-            onClick={clearForm}
-            className="bg-[#FFDE00] text-black px-4 py-3 rounded font-semibold"
+            onClick={() =>
+              downloadTemplate("jdc-car-import-template.csv", carHeaders)
+            }
+            className="bg-[#1F4E1A] text-white px-4 py-2 rounded mb-3"
           >
-            Clear
+            Download Car Template
           </button>
+
+          <input
+            type="file"
+            accept=".csv"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) importCars(file);
+            }}
+            className="block w-full"
+          />
+
+          {carFileName && (
+            <p className="text-sm text-gray-500 mt-2">File: {carFileName}</p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-4 border-t-4 border-[#FFDE00]">
+          <h2 className="text-xl font-bold mb-2 text-[#1F4E1A]">
+            Import People
+          </h2>
+
+          <p className="text-sm text-gray-600 mb-3">
+            Upload a CSV of players, staff, or other people.
+          </p>
+
+          <button
+            onClick={() =>
+              downloadTemplate("jdc-people-import-template.csv", peopleHeaders)
+            }
+            className="bg-[#1F4E1A] text-white px-4 py-2 rounded mb-3"
+          >
+            Download People Template
+          </button>
+
+          <input
+            type="file"
+            accept=".csv"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) importPeople(file);
+            }}
+            className="block w-full"
+          />
+
+          {peopleFileName && (
+            <p className="text-sm text-gray-500 mt-2">File: {peopleFileName}</p>
+          )}
         </div>
 
         {message && (
-          <div className="mt-4 bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-4 text-[#1F4E1A] font-semibold">
+          <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-4 text-[#1F4E1A] font-semibold">
             {message}
-          </div>
-        )}
-
-        {missingCars.length > 0 && (
-          <div className="mt-4 bg-red-50 border border-red-200 rounded p-4">
-            <p className="font-semibold text-red-700 mb-2">
-              These car numbers were not found:
-            </p>
-            <p className="text-sm text-red-700">{missingCars.join(", ")}</p>
           </div>
         )}
       </div>
