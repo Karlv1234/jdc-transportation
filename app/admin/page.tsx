@@ -11,7 +11,7 @@ export default function AdminPage() {
             Import Data
           </h2>
 
-          <p className="text-sm text-gray-800 mb-4">
+          <p className="text-sm text-gray-600 mb-4">
             Upload car lists and people/player lists from CSV templates.
           </p>
 
@@ -20,6 +20,23 @@ export default function AdminPage() {
             className="inline-block bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded font-semibold"
           >
             Import Cars & People
+          </Link>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-4 border-t-4 border-[#FFDE00]">
+          <h2 className="text-xl font-bold text-[#1F4E1A] mb-2">
+            Mass Move Cars
+          </h2>
+
+          <p className="text-sm text-gray-600 mb-4">
+            Move a list of car numbers to a new location all at once.
+          </p>
+
+          <Link
+            href="/admin/move-cars"
+            className="inline-block bg-[#1F4E1A] text-white px-4 py-3 rounded font-semibold"
+          >
+            Open Mass Move Tool
           </Link>
         </div>
       </div>
