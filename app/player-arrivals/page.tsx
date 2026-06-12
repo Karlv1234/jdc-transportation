@@ -22,8 +22,11 @@ type Arrival = {
   tail_number: string | null;
   arrival_date: string | null;
   estimated_arrival_time: string | null;
-  status: string | null;
   notes: string | null;
+};
+
+type OpenCheckout = {
+  person_id: number | null;
 };
 
 const ARRIVAL_METHODS = [
@@ -32,8 +35,6 @@ const ARRIVAL_METHODS = [
   "Private Aircraft",
   "Other",
 ];
-
-const STATUS_OPTIONS = ["Expected", "Arrived", "Delayed", "Cancelled"];
 
 function dateToInputValue(date: Date) {
   const year = date.getFullYear();
@@ -44,6 +45,7 @@ function dateToInputValue(date: Date) {
 
 function formatDate(dateText: string | null) {
   if (!dateText) return "";
+
   return new Date(`${dateText}T00:00:00`).toLocaleDateString([], {
     weekday: "short",
     month: "short",
@@ -64,16 +66,10 @@ function formatTime(time: string | null) {
   });
 }
 
-function getStatusBadge(status: string | null) {
-  if (status === "Arrived") return "bg-[#367C2B] text-white";
-  if (status === "Delayed") return "bg-[#FFDE00] text-black";
-  if (status === "Cancelled") return "bg-gray-300 text-black";
-  return "bg-blue-100 text-blue-800";
-}
-
 export default function PlayerArrivalsPage() {
   const [people, setPeople] = useState<Person[]>([]);
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
+  const [openCheckouts, setOpenCheckouts] = useState<OpenCheckout[]>([]);
 
   const [personSearch, setPersonSearch] = useState("");
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -88,10 +84,10 @@ export default function PlayerArrivalsPage() {
   const [notes, setNotes] = useState("");
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
 
   const today = dateToInputValue(new Date());
+
   const tomorrowDate = new Date();
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrow = dateToInputValue(tomorrowDate);
@@ -110,7 +106,9 @@ export default function PlayerArrivalsPage() {
 
     const { data: arrivalData, error: arrivalError } = await supabase
       .from("player_arrivals")
-      .select("*")
+      .select(
+        "id, person_id, player_first_name, player_last_name, arrival_method, airline, flight_number, flight_origin, tail_number, arrival_date, estimated_arrival_time, notes"
+      )
       .order("arrival_date", { ascending: true })
       .order("estimated_arrival_time", { ascending: true });
 
@@ -119,13 +117,33 @@ export default function PlayerArrivalsPage() {
       return;
     }
 
+    const { data: checkoutData, error: checkoutError } = await supabase
+      .from("checkouts")
+      .select("person_id")
+      .is("time_in", null);
+
+    if (checkoutError) {
+      alert(checkoutError.message);
+      return;
+    }
+
     setPeople(peopleData || []);
     setArrivals(arrivalData || []);
+    setOpenCheckouts(checkoutData || []);
   }
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const checkedOutPersonIds = openCheckouts
+    .map((checkout) => checkout.person_id)
+    .filter((id): id is number => id !== null);
+
+  const visibleArrivals = arrivals.filter((arrival) => {
+    if (!arrival.person_id) return true;
+    return !checkedOutPersonIds.includes(arrival.person_id);
+  });
 
   const matchingPeople = people
     .filter((person) => {
@@ -134,24 +152,23 @@ export default function PlayerArrivalsPage() {
     })
     .slice(0, 8);
 
-  const todayArrivals = arrivals.filter(
+  const todayArrivals = visibleArrivals.filter(
     (arrival) => arrival.arrival_date === today
   );
 
-  const tomorrowArrivals = arrivals.filter(
+  const tomorrowArrivals = visibleArrivals.filter(
     (arrival) => arrival.arrival_date === tomorrow
   );
 
-  const filteredArrivals = arrivals.filter((arrival) => {
+  const filteredArrivals = visibleArrivals.filter((arrival) => {
     const text =
-      `${arrival.player_first_name} ${arrival.player_last_name} ${arrival.arrival_method} ${arrival.airline} ${arrival.flight_number} ${arrival.flight_origin} ${arrival.tail_number} ${arrival.status} ${arrival.notes}`.toLowerCase();
+      `${arrival.player_first_name} ${arrival.player_last_name} ${arrival.arrival_method} ${arrival.airline} ${arrival.flight_number} ${arrival.flight_origin} ${arrival.tail_number} ${arrival.notes}`.toLowerCase();
 
     const matchesSearch = text.includes(search.toLowerCase());
-    const matchesStatus = !statusFilter || arrival.status === statusFilter;
     const matchesMethod =
       !methodFilter || arrival.arrival_method === methodFilter;
 
-    return matchesSearch && matchesStatus && matchesMethod;
+    return matchesSearch && matchesMethod;
   });
 
   async function addNewPlayer() {
@@ -213,7 +230,7 @@ export default function PlayerArrivalsPage() {
       arrivalMethod === "Commercial Flight" ||
       arrivalMethod === "Private Aircraft";
 
-    const { error } = await supabase.from("player_arrivals").insert({
+    const arrivalPayload = {
       person_id: selectedPerson.id,
       player_first_name: selectedPerson.first_name,
       player_last_name: selectedPerson.last_name,
@@ -224,13 +241,46 @@ export default function PlayerArrivalsPage() {
       tail_number: arrivalMethod === "Private Aircraft" ? tailNumber : "",
       arrival_date: arrivalDate,
       estimated_arrival_time: arrivalTime,
-      status: "Expected",
       notes,
-    });
+    };
 
-    if (error) {
-      alert(error.message);
+    const { data: existingArrivals, error: findError } = await supabase
+      .from("player_arrivals")
+      .select("id")
+      .eq("person_id", selectedPerson.id)
+      .order("id", { ascending: true })
+      .limit(1);
+
+    if (findError) {
+      alert(findError.message);
       return;
+    }
+
+    const existingArrival = existingArrivals?.[0];
+
+    if (existingArrival) {
+      const { error } = await supabase
+        .from("player_arrivals")
+        .update(arrivalPayload)
+        .eq("id", existingArrival.id);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      alert("Existing arrival updated.");
+    } else {
+      const { error } = await supabase
+        .from("player_arrivals")
+        .insert(arrivalPayload);
+
+      if (error) {
+        alert(error.message);
+        return;
+      }
+
+      alert("Arrival added.");
     }
 
     setPersonSearch("");
@@ -306,31 +356,9 @@ export default function PlayerArrivalsPage() {
               </p>
             )}
           </div>
-
-          <span
-            className={`h-fit rounded px-3 py-1 text-sm font-semibold ${getStatusBadge(
-              arrival.status
-            )}`}
-          >
-            {arrival.status || "Expected"}
-          </span>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-[180px_1fr_120px] mt-3">
-          <select
-            value={arrival.status || "Expected"}
-            onChange={(e) =>
-              updateArrival(arrival.id, { status: e.target.value })
-            }
-            className="border rounded p-2 w-full"
-          >
-            {STATUS_OPTIONS.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-
+        <div className="grid gap-3 md:grid-cols-[1fr_120px] mt-3">
           <textarea
             defaultValue={arrival.notes || ""}
             onBlur={(e) =>
@@ -364,6 +392,180 @@ export default function PlayerArrivalsPage() {
         </button>
       </div>
 
+      <section className="bg-white rounded-lg shadow p-4 mb-4 border-t-4 border-[#367C2B] max-w-3xl">
+        <h2 className="text-xl font-bold text-[#1F4E1A] mb-3">
+          Add Arrival
+        </h2>
+
+        <label className="block font-semibold mb-1">Player</label>
+        <input
+          value={personSearch}
+          onChange={(e) => {
+            setPersonSearch(e.target.value);
+            setSelectedPerson(null);
+          }}
+          placeholder="Type player name..."
+          className="border rounded p-3 w-full"
+        />
+
+        {!selectedPerson && personSearch && (
+          <div className="border rounded mt-2 mb-4 bg-white overflow-hidden">
+            {matchingPeople.length === 0 ? (
+              <div className="p-3">
+                <p className="text-gray-500 mb-2">No players found.</p>
+
+                <button
+                  onClick={addNewPlayer}
+                  className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-2 rounded w-full"
+                >
+                  Add New Player
+                </button>
+              </div>
+            ) : (
+              <>
+                {matchingPeople.map((person) => (
+                  <button
+                    key={person.id}
+                    onClick={() => {
+                      setSelectedPerson(person);
+                      setPersonSearch(
+                        `${person.first_name} ${person.last_name}`
+                      );
+                    }}
+                    className="block w-full text-left p-3 border-b hover:bg-gray-100"
+                  >
+                    {person.first_name} {person.last_name}
+                  </button>
+                ))}
+
+                <button
+                  onClick={addNewPlayer}
+                  className="block w-full text-left p-3 bg-[#FFDE00]/20 text-[#1F4E1A] font-semibold hover:bg-[#FFDE00]/30"
+                >
+                  + Add New Player
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {selectedPerson && (
+          <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 my-4">
+            Selected: {selectedPerson.first_name} {selectedPerson.last_name}
+          </div>
+        )}
+
+        <label className="block font-semibold mb-1">Arrival Method</label>
+        <select
+          value={arrivalMethod}
+          onChange={(e) => setArrivalMethod(e.target.value)}
+          className="border rounded p-3 w-full mb-4"
+        >
+          {ARRIVAL_METHODS.map((method) => (
+            <option key={method} value={method}>
+              {method}
+            </option>
+          ))}
+        </select>
+
+        {arrivalMethod === "Commercial Flight" && (
+          <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="block font-semibold mb-1">Airline</label>
+              <input
+                value={airline}
+                onChange={(e) => setAirline(e.target.value)}
+                placeholder="Example: American"
+                className="border rounded p-3 w-full mb-4"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold mb-1">Flight Number</label>
+              <input
+                value={flightNumber}
+                onChange={(e) => setFlightNumber(e.target.value)}
+                placeholder="Example: AA 1234"
+                className="border rounded p-3 w-full mb-4"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold mb-1">Coming From</label>
+              <input
+                value={flightOrigin}
+                onChange={(e) => setFlightOrigin(e.target.value)}
+                placeholder="Example: Chicago ORD"
+                className="border rounded p-3 w-full mb-4"
+              />
+            </div>
+          </div>
+        )}
+
+        {arrivalMethod === "Private Aircraft" && (
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="block font-semibold mb-1">Tail Number</label>
+              <input
+                value={tailNumber}
+                onChange={(e) => setTailNumber(e.target.value)}
+                placeholder="Example: N123AB"
+                className="border rounded p-3 w-full mb-4"
+              />
+            </div>
+
+            <div>
+              <label className="block font-semibold mb-1">Coming From</label>
+              <input
+                value={flightOrigin}
+                onChange={(e) => setFlightOrigin(e.target.value)}
+                placeholder="Example: Scottsdale SDL"
+                className="border rounded p-3 w-full mb-4"
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <label className="block font-semibold mb-1">Arrival Date</label>
+            <input
+              type="date"
+              value={arrivalDate}
+              onChange={(e) => setArrivalDate(e.target.value)}
+              className="border rounded p-3 w-full mb-4"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold mb-1">
+              Estimated Arrival Time
+            </label>
+            <input
+              type="time"
+              value={arrivalTime}
+              onChange={(e) => setArrivalTime(e.target.value)}
+              className="border rounded p-3 w-full mb-4"
+            />
+          </div>
+        </div>
+
+        <label className="block font-semibold mb-1">Notes</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Optional notes"
+          className="border rounded p-3 w-full mb-4"
+        />
+
+        <button
+          onClick={addArrival}
+          className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded w-full font-semibold"
+        >
+          Add / Update Arrival
+        </button>
+      </section>
+
       <div className="grid gap-4 mb-4">
         <section className="bg-white rounded-lg shadow overflow-hidden border-t-4 border-[#367C2B]">
           <div className="p-4 bg-white">
@@ -374,7 +576,9 @@ export default function PlayerArrivalsPage() {
           </div>
 
           {todayArrivals.length === 0 ? (
-            <div className="p-4 text-gray-500">No arrivals scheduled today.</div>
+            <div className="p-4 text-gray-500">
+              No active arrivals scheduled today.
+            </div>
           ) : (
             todayArrivals.map((arrival) => (
               <ArrivalCard key={arrival.id} arrival={arrival} />
@@ -392,7 +596,7 @@ export default function PlayerArrivalsPage() {
 
           {tomorrowArrivals.length === 0 ? (
             <div className="p-4 text-gray-500">
-              No arrivals scheduled tomorrow.
+              No active arrivals scheduled tomorrow.
             </div>
           ) : (
             tomorrowArrivals.map((arrival) => (
@@ -402,209 +606,18 @@ export default function PlayerArrivalsPage() {
         </section>
       </div>
 
-      <details className="bg-white rounded-lg shadow p-4 mb-4 border-t-4 border-[#367C2B] max-w-2xl">
-        <summary className="text-xl font-bold text-[#1F4E1A] cursor-pointer">
-          Add Arrival
-        </summary>
-
-        <div className="mt-4">
-          <label className="block font-semibold mb-1">Player</label>
-          <input
-            value={personSearch}
-            onChange={(e) => {
-              setPersonSearch(e.target.value);
-              setSelectedPerson(null);
-            }}
-            placeholder="Type player name..."
-            className="border rounded p-3 w-full"
-          />
-
-          {!selectedPerson && personSearch && (
-            <div className="border rounded mt-2 mb-4 bg-white overflow-hidden">
-              {matchingPeople.length === 0 ? (
-                <div className="p-3">
-                  <p className="text-gray-500 mb-2">No players found.</p>
-
-                  <button
-                    onClick={addNewPlayer}
-                    className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-2 rounded w-full"
-                  >
-                    Add New Player
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {matchingPeople.map((person) => (
-                    <button
-                      key={person.id}
-                      onClick={() => {
-                        setSelectedPerson(person);
-                        setPersonSearch(
-                          `${person.first_name} ${person.last_name}`
-                        );
-                      }}
-                      className="block w-full text-left p-3 border-b hover:bg-gray-100"
-                    >
-                      {person.first_name} {person.last_name}
-                    </button>
-                  ))}
-
-                  <button
-                    onClick={addNewPlayer}
-                    className="block w-full text-left p-3 bg-[#FFDE00]/20 text-[#1F4E1A] font-semibold hover:bg-[#FFDE00]/30"
-                  >
-                    + Add New Player
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-
-          {selectedPerson && (
-            <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 my-4">
-              Selected: {selectedPerson.first_name} {selectedPerson.last_name}
-            </div>
-          )}
-
-          <label className="block font-semibold mb-1">Arrival Method</label>
-          <select
-            value={arrivalMethod}
-            onChange={(e) => setArrivalMethod(e.target.value)}
-            className="border rounded p-3 w-full mb-4"
-          >
-            {ARRIVAL_METHODS.map((method) => (
-              <option key={method} value={method}>
-                {method}
-              </option>
-            ))}
-          </select>
-
-          {arrivalMethod === "Commercial Flight" && (
-            <div className="grid gap-3 md:grid-cols-3">
-              <div>
-                <label className="block font-semibold mb-1">Airline</label>
-                <input
-                  value={airline}
-                  onChange={(e) => setAirline(e.target.value)}
-                  placeholder="Example: American"
-                  className="border rounded p-3 w-full mb-4"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1">
-                  Flight Number
-                </label>
-                <input
-                  value={flightNumber}
-                  onChange={(e) => setFlightNumber(e.target.value)}
-                  placeholder="Example: AA 1234"
-                  className="border rounded p-3 w-full mb-4"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1">Coming From</label>
-                <input
-                  value={flightOrigin}
-                  onChange={(e) => setFlightOrigin(e.target.value)}
-                  placeholder="Example: Chicago ORD"
-                  className="border rounded p-3 w-full mb-4"
-                />
-              </div>
-            </div>
-          )}
-
-          {arrivalMethod === "Private Aircraft" && (
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <label className="block font-semibold mb-1">Tail Number</label>
-                <input
-                  value={tailNumber}
-                  onChange={(e) => setTailNumber(e.target.value)}
-                  placeholder="Example: N123AB"
-                  className="border rounded p-3 w-full mb-4"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold mb-1">Coming From</label>
-                <input
-                  value={flightOrigin}
-                  onChange={(e) => setFlightOrigin(e.target.value)}
-                  placeholder="Example: Scottsdale SDL"
-                  className="border rounded p-3 w-full mb-4"
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="block font-semibold mb-1">Arrival Date</label>
-              <input
-                type="date"
-                value={arrivalDate}
-                onChange={(e) => setArrivalDate(e.target.value)}
-                className="border rounded p-3 w-full mb-4"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1">
-                Estimated Arrival Time
-              </label>
-              <input
-                type="time"
-                value={arrivalTime}
-                onChange={(e) => setArrivalTime(e.target.value)}
-                className="border rounded p-3 w-full mb-4"
-              />
-            </div>
-          </div>
-
-          <label className="block font-semibold mb-1">Notes</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Optional notes"
-            className="border rounded p-3 w-full mb-4"
-          />
-
-          <button
-            onClick={addArrival}
-            className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded w-full font-semibold"
-          >
-            Add Arrival
-          </button>
-        </div>
-      </details>
-
       <div className="bg-white rounded-lg shadow p-4 mb-4 border-t-4 border-[#FFDE00]">
         <h2 className="text-xl font-bold text-[#1F4E1A] mb-3">
-          All Arrivals
+          All Active Arrivals
         </h2>
 
-        <div className="grid gap-3 md:grid-cols-[1fr_200px_220px]">
+        <div className="grid gap-3 md:grid-cols-[1fr_220px]">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search player, flight, origin, tail number, notes..."
             className="border rounded p-3 w-full"
           />
-
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="border rounded p-3 w-full"
-          >
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
 
           <select
             value={methodFilter}
@@ -627,7 +640,7 @@ export default function PlayerArrivalsPage() {
         ))}
 
         {filteredArrivals.length === 0 && (
-          <div className="p-4 text-gray-500">No arrivals found.</div>
+          <div className="p-4 text-gray-500">No active arrivals found.</div>
         )}
       </div>
     </main>
