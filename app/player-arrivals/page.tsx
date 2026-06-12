@@ -18,6 +18,7 @@ type Arrival = {
   arrival_method: string;
   airline: string | null;
   flight_number: string | null;
+  flight_origin: string | null;
   tail_number: string | null;
   arrival_date: string | null;
   estimated_arrival_time: string | null;
@@ -80,6 +81,7 @@ export default function PlayerArrivalsPage() {
   const [arrivalMethod, setArrivalMethod] = useState("Commercial Flight");
   const [airline, setAirline] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
+  const [flightOrigin, setFlightOrigin] = useState("");
   const [tailNumber, setTailNumber] = useState("");
   const [arrivalDate, setArrivalDate] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
@@ -142,7 +144,7 @@ export default function PlayerArrivalsPage() {
 
   const filteredArrivals = arrivals.filter((arrival) => {
     const text =
-      `${arrival.player_first_name} ${arrival.player_last_name} ${arrival.arrival_method} ${arrival.airline} ${arrival.flight_number} ${arrival.tail_number} ${arrival.status} ${arrival.notes}`.toLowerCase();
+      `${arrival.player_first_name} ${arrival.player_last_name} ${arrival.arrival_method} ${arrival.airline} ${arrival.flight_number} ${arrival.flight_origin} ${arrival.tail_number} ${arrival.status} ${arrival.notes}`.toLowerCase();
 
     const matchesSearch = text.includes(search.toLowerCase());
     const matchesStatus = !statusFilter || arrival.status === statusFilter;
@@ -207,6 +209,10 @@ export default function PlayerArrivalsPage() {
       return;
     }
 
+    const isFlight =
+      arrivalMethod === "Commercial Flight" ||
+      arrivalMethod === "Private Aircraft";
+
     const { error } = await supabase.from("player_arrivals").insert({
       person_id: selectedPerson.id,
       player_first_name: selectedPerson.first_name,
@@ -214,6 +220,7 @@ export default function PlayerArrivalsPage() {
       arrival_method: arrivalMethod,
       airline: arrivalMethod === "Commercial Flight" ? airline : "",
       flight_number: arrivalMethod === "Commercial Flight" ? flightNumber : "",
+      flight_origin: isFlight ? flightOrigin : "",
       tail_number: arrivalMethod === "Private Aircraft" ? tailNumber : "",
       arrival_date: arrivalDate,
       estimated_arrival_time: arrivalTime,
@@ -231,6 +238,7 @@ export default function PlayerArrivalsPage() {
     setArrivalMethod("Commercial Flight");
     setAirline("");
     setFlightNumber("");
+    setFlightOrigin("");
     setTailNumber("");
     setArrivalDate("");
     setArrivalTime("");
@@ -283,6 +291,7 @@ export default function PlayerArrivalsPage() {
               {arrival.arrival_method}
               {arrival.airline ? ` — ${arrival.airline}` : ""}
               {arrival.flight_number ? ` ${arrival.flight_number}` : ""}
+              {arrival.flight_origin ? ` — From: ${arrival.flight_origin}` : ""}
               {arrival.tail_number ? ` — Tail: ${arrival.tail_number}` : ""}
             </p>
 
@@ -471,7 +480,7 @@ export default function PlayerArrivalsPage() {
           </select>
 
           {arrivalMethod === "Commercial Flight" && (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-3">
               <div>
                 <label className="block font-semibold mb-1">Airline</label>
                 <input
@@ -493,18 +502,40 @@ export default function PlayerArrivalsPage() {
                   className="border rounded p-3 w-full mb-4"
                 />
               </div>
+
+              <div>
+                <label className="block font-semibold mb-1">Coming From</label>
+                <input
+                  value={flightOrigin}
+                  onChange={(e) => setFlightOrigin(e.target.value)}
+                  placeholder="Example: Chicago ORD"
+                  className="border rounded p-3 w-full mb-4"
+                />
+              </div>
             </div>
           )}
 
           {arrivalMethod === "Private Aircraft" && (
-            <div>
-              <label className="block font-semibold mb-1">Tail Number</label>
-              <input
-                value={tailNumber}
-                onChange={(e) => setTailNumber(e.target.value)}
-                placeholder="Example: N123AB"
-                className="border rounded p-3 w-full mb-4"
-              />
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="block font-semibold mb-1">Tail Number</label>
+                <input
+                  value={tailNumber}
+                  onChange={(e) => setTailNumber(e.target.value)}
+                  placeholder="Example: N123AB"
+                  className="border rounded p-3 w-full mb-4"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold mb-1">Coming From</label>
+                <input
+                  value={flightOrigin}
+                  onChange={(e) => setFlightOrigin(e.target.value)}
+                  placeholder="Example: Scottsdale SDL"
+                  className="border rounded p-3 w-full mb-4"
+                />
+              </div>
             </div>
           )}
 
@@ -558,7 +589,7 @@ export default function PlayerArrivalsPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search player, flight, tail number, notes..."
+            placeholder="Search player, flight, origin, tail number, notes..."
             className="border rounded p-3 w-full"
           />
 
