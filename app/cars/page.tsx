@@ -17,40 +17,75 @@ type Vehicle = {
   notes: string | null;
 };
 
+type Checkout = {
+  id: number;
+  vehicle_id: number | null;
+  car_number: number | null;
+  person_first_name: string | null;
+  person_last_name: string | null;
+  on_behalf_of: string | null;
+  checked_out_by: string | null;
+  time_out: string | null;
+};
+
 const LOCATION_OPTIONS = ["Airport", "Trailer", "Return Lot"];
 const STATUS_OPTIONS = ["Available", "Checked Out", "Hold"];
 
 export default function CarsPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [checkouts, setCheckouts] = useState<Checkout[]>([]);
   const [search, setSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [bulkLocation, setBulkLocation] = useState("");
   const [bulkStatus, setBulkStatus] = useState("");
 
-  async function loadVehicles() {
-    const { data, error } = await supabase
+  async function loadData() {
+    const { data: vehicleData, error: vehicleError } = await supabase
       .from("vehicles")
       .select("*")
       .order("car_number");
 
-    if (error) {
-      alert(error.message);
+    if (vehicleError) {
+      alert(vehicleError.message);
       return;
     }
 
-    setVehicles(data || []);
+    const { data: checkoutData, error: checkoutError } = await supabase
+      .from("checkouts")
+      .select(
+        "id, vehicle_id, car_number, person_first_name, person_last_name, on_behalf_of, checked_out_by, time_out"
+      )
+      .is("time_in", null);
+
+    if (checkoutError) {
+      alert(checkoutError.message);
+      return;
+    }
+
+    setVehicles(vehicleData || []);
+    setCheckouts(checkoutData || []);
   }
 
   useEffect(() => {
-    loadVehicles();
+    loadData();
   }, []);
 
   const filteredVehicles = vehicles.filter((v) => {
+    const checkout = getCheckoutForVehicle(v);
+
     const text =
-      `${v.car_number} ${v.make} ${v.model} ${v.type} ${v.color} ${v.vin} ${v.dealership} ${v.current_location} ${v.status}`.toLowerCase();
+      `${v.car_number} ${v.make} ${v.model} ${v.type} ${v.color} ${v.vin} ${v.dealership} ${v.current_location} ${v.status} ${checkout?.person_first_name} ${checkout?.person_last_name} ${checkout?.on_behalf_of}`.toLowerCase();
 
     return text.includes(search.toLowerCase());
   });
+
+  function getCheckoutForVehicle(vehicle: Vehicle) {
+    return (
+      checkouts.find((c) => c.vehicle_id === vehicle.id) ||
+      checkouts.find((c) => c.car_number === vehicle.car_number) ||
+      null
+    );
+  }
 
   function toggleSelected(id: number) {
     setSelectedIds((current) =>
@@ -88,7 +123,7 @@ export default function CarsPage() {
       return;
     }
 
-    loadVehicles();
+    loadData();
   }
 
   async function applyBulkUpdate() {
@@ -122,7 +157,7 @@ export default function CarsPage() {
     setSelectedIds([]);
     setBulkLocation("");
     setBulkStatus("");
-    loadVehicles();
+    loadData();
   }
 
   function getStatusBadge(status: string | null) {
@@ -131,13 +166,82 @@ export default function CarsPage() {
     return "bg-gray-300 text-black";
   }
 
+  function csvSafe(value: string | number | null | undefined) {
+    const text = value === null || value === undefined ? "" : String(value);
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  function downloadCarsCsv() {
+    const headers = [
+      "Car #",
+      "Make",
+      "Model",
+      "Type",
+      "Color",
+      "Status",
+      "Current Location",
+      "Checked Out To",
+      "On Behalf Of",
+      "Checked Out By",
+      "Time Out",
+      "VIN",
+      "Dealership",
+      "Notes",
+    ];
+
+    const rows = filteredVehicles.map((vehicle) => {
+      const checkout = getCheckoutForVehicle(vehicle);
+
+      const checkedOutTo = checkout
+        ? `${checkout.person_first_name || ""} ${
+            checkout.person_last_name || ""
+          }`.trim()
+        : "";
+
+      const timeOut = checkout?.time_out
+        ? new Date(checkout.time_out).toLocaleString()
+        : "";
+
+      return [
+        vehicle.car_number,
+        vehicle.make,
+        vehicle.model,
+        vehicle.type,
+        vehicle.color,
+        vehicle.status,
+        vehicle.current_location,
+        checkedOutTo,
+        checkout?.on_behalf_of || "",
+        checkout?.checked_out_by || "",
+        timeOut,
+        vehicle.vin,
+        vehicle.dealership,
+        vehicle.notes,
+      ]
+        .map(csvSafe)
+        .join(",");
+    });
+
+    const csv = [headers.map(csvSafe).join(","), ...rows].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "jdc-cars-current-status.csv";
+    link.click();
+
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <main className="min-h-screen bg-[#F5F5F5] p-4">
       <div className="flex items-center justify-between gap-3 mb-4">
         <h1 className="text-3xl font-bold">Cars</h1>
 
         <button
-          onClick={loadVehicles}
+          onClick={loadData}
           className="bg-[#1F4E1A] text-white px-4 py-2 rounded"
         >
           Refresh
@@ -148,11 +252,11 @@ export default function CarsPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search car #, model, color, VIN, location..."
+          placeholder="Search car #, model, color, person, VIN, location..."
           className="border rounded p-3 w-full mb-3"
         />
 
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <select
             value={bulkLocation}
             onChange={(e) => setBulkLocation(e.target.value)}
@@ -192,10 +296,17 @@ export default function CarsPage() {
           >
             Clear Selection
           </button>
+
+          <button
+            onClick={downloadCarsCsv}
+            className="bg-[#1F4E1A] text-white rounded px-4 py-3 font-semibold"
+          >
+            Download CSV
+          </button>
         </div>
 
-        <p className="text-sm text-gray-800 mt-3">
-          Selected: {selectedIds.length}
+        <p className="text-sm text-gray-600 mt-3">
+          Selected: {selectedIds.length} | Showing: {filteredVehicles.length}
         </p>
       </div>
 
@@ -213,88 +324,106 @@ export default function CarsPage() {
         </div>
 
         <div className="grid gap-0">
-          {filteredVehicles.map((v) => (
-            <div
-              key={v.id}
-              className="p-4 border-b grid gap-3 md:grid-cols-[40px_1fr_160px_160px] md:items-center"
-            >
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(v.id)}
-                onChange={() => toggleSelected(v.id)}
-              />
+          {filteredVehicles.map((v) => {
+            const checkout = getCheckoutForVehicle(v);
 
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-bold text-lg">
-                    Car #{v.car_number} — {v.model || ""}
+            return (
+              <div
+                key={v.id}
+                className="p-4 border-b grid gap-3 md:grid-cols-[40px_1fr_160px_160px] md:items-center"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.includes(v.id)}
+                  onChange={() => toggleSelected(v.id)}
+                />
+
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-bold text-lg">
+                      Car #{v.car_number} — {v.model || ""}
+                    </p>
+
+                    <span
+                      className={`rounded px-2 py-1 text-xs font-semibold ${getStatusBadge(
+                        v.status
+                      )}`}
+                    >
+                      {v.status || "Unknown"}
+                    </span>
+                  </div>
+
+                  <p className="text-sm text-gray-600">
+                    {v.color || ""} {v.make || ""} {v.type || ""}
                   </p>
 
-                  <span
-                    className={`rounded px-2 py-1 text-xs font-semibold ${getStatusBadge(
-                      v.status
-                    )}`}
-                  >
-                    {v.status || "Unknown"}
-                  </span>
+                  {checkout && (
+                    <p className="text-sm font-semibold text-red-700 mt-1">
+                      Checked out to: {checkout.person_first_name}{" "}
+                      {checkout.person_last_name}
+                      {checkout.on_behalf_of
+                        ? ` | On behalf of: ${checkout.on_behalf_of}`
+                        : ""}
+                    </p>
+                  )}
+
+                  {v.vin && (
+                    <p className="text-xs text-gray-500">VIN: {v.vin}</p>
+                  )}
+
+                  {v.dealership && (
+                    <p className="text-xs text-gray-500">
+                      Dealership: {v.dealership}
+                    </p>
+                  )}
                 </div>
 
-                <p className="text-sm text-gray-800">
-                  {v.color || ""} {v.make || ""} {v.type || ""}
-                </p>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">
+                    Location
+                  </label>
+                  <select
+                    value={v.current_location || ""}
+                    onChange={(e) =>
+                      updateVehicle(v.id, {
+                        current_location: e.target.value,
+                      })
+                    }
+                    className="border rounded p-2 w-full"
+                  >
+                    <option value="">Unknown</option>
+                    {LOCATION_OPTIONS.map((location) => (
+                      <option key={location} value={location}>
+                        {location}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                {v.vin && (
-                  <p className="text-xs text-gray-500">VIN: {v.vin}</p>
-                )}
-
-                {v.dealership && (
-                  <p className="text-xs text-gray-500">
-                    Dealership: {v.dealership}
-                  </p>
-                )}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1">
+                    Status
+                  </label>
+                  <select
+                    value={v.status || ""}
+                    onChange={(e) =>
+                      updateVehicle(v.id, {
+                        status: e.target.value,
+                      })
+                    }
+                    className="border rounded p-2 w-full"
+                  >
+                    <option value="">Unknown</option>
+                    {STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">
-                  Location
-                </label>
-                <select
-                  value={v.current_location || ""}
-                  onChange={(e) =>
-                    updateVehicle(v.id, { current_location: e.target.value })
-                  }
-                  className="border rounded p-2 w-full"
-                >
-                  <option value="">Unknown</option>
-                  {LOCATION_OPTIONS.map((location) => (
-                    <option key={location} value={location}>
-                      {location}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">
-                  Status
-                </label>
-                <select
-                  value={v.status || ""}
-                  onChange={(e) =>
-                    updateVehicle(v.id, { status: e.target.value })
-                  }
-                  className="border rounded p-2 w-full"
-                >
-                  <option value="">Unknown</option>
-                  {STATUS_OPTIONS.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {filteredVehicles.length === 0 && (
             <div className="p-4 text-gray-500">No cars found.</div>
