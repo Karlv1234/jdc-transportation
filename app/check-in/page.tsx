@@ -21,7 +21,14 @@ type Checkout = {
   person_last_name: string | null;
 };
 
-const RETURN_LOCATIONS = ["Airport", "Trailer", "Return Lot"];
+const RETURN_LOCATIONS = [
+  "Airport",
+  "Trailer",
+  "Return Lot",
+  "On Course",
+  "Smart Lexus",
+  "Checked Out",
+];
 
 export default function CheckInPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -147,11 +154,11 @@ export default function CheckInPage() {
                       Car #{v.car_number}
                     </div>
 
-                    <div className="text-sm text-gray-800">
+                    <div className="text-sm text-gray-600">
                       {v.model} — {v.type} — {v.color}
                     </div>
 
-                    <div className="text-sm text-gray-800">
+                    <div className="text-sm text-gray-600">
                       {checkout?.person_first_name}{" "}
                       {checkout?.person_last_name}
                     </div>

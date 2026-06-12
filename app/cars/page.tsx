@@ -28,7 +28,15 @@ type Checkout = {
   time_out: string | null;
 };
 
-const LOCATION_OPTIONS = ["Airport", "Trailer", "Return Lot"];
+const LOCATION_OPTIONS = [
+  "Airport",
+  "Trailer",
+  "Return Lot",
+  "On Course",
+  "Smart Lexus",
+  "Checked Out",
+];
+
 const STATUS_OPTIONS = ["Available", "Checked Out", "Hold"];
 
 export default function CarsPage() {
@@ -70,6 +78,14 @@ export default function CarsPage() {
     loadData();
   }, []);
 
+  function getCheckoutForVehicle(vehicle: Vehicle) {
+    return (
+      checkouts.find((c) => c.vehicle_id === vehicle.id) ||
+      checkouts.find((c) => c.car_number === vehicle.car_number) ||
+      null
+    );
+  }
+
   const filteredVehicles = vehicles.filter((v) => {
     const checkout = getCheckoutForVehicle(v);
 
@@ -78,14 +94,6 @@ export default function CarsPage() {
 
     return text.includes(search.toLowerCase());
   });
-
-  function getCheckoutForVehicle(vehicle: Vehicle) {
-    return (
-      checkouts.find((c) => c.vehicle_id === vehicle.id) ||
-      checkouts.find((c) => c.car_number === vehicle.car_number) ||
-      null
-    );
-  }
 
   function toggleSelected(id: number) {
     setSelectedIds((current) =>
