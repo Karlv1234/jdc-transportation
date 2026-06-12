@@ -704,4 +704,3 @@ export default function PlayerArrivalsPage() {
     </main>
   );
 }
-
