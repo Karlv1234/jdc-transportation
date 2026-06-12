@@ -61,19 +61,21 @@ export default function CheckOutPage() {
     loadData();
   }, []);
 
-  const locations = Array.from(
-    new Set(
-      vehicles
-        .map((v) => v.current_location)
-        .filter((l): l is string => Boolean(l))
-    )
-  ).sort();
-
   const availableVehicles = vehicles.filter(
     (v) =>
       v.status !== "Checked Out" &&
       (!location || v.current_location === location)
   );
+
+  const locations = Array.from(
+    new Set(
+      vehicles
+        .filter((v) => v.status !== "Checked Out")
+        .map((v) => v.current_location)
+        .filter((l): l is string => Boolean(l))
+        .filter((l) => l !== "Checked Out")
+    )
+  ).sort();
 
   const matchingPeople = people
     .filter((p) => {
@@ -120,6 +122,7 @@ export default function CheckOutPage() {
     if (!checkedOutBy.trim()) return alert("Please enter who checked this out.");
 
     const now = new Date().toISOString();
+    const startLocation = selectedVehicle.current_location || "Unknown";
 
     const { error: checkoutError } = await supabase.from("checkouts").insert({
       vehicle_id: selectedVehicle.id,
@@ -132,7 +135,7 @@ export default function CheckOutPage() {
       on_behalf_of: onBehalfOf,
       checked_out_by: checkedOutBy,
       time_out: now,
-      start_location: selectedVehicle.current_location,
+      start_location: startLocation,
       checkout_notes: notes,
       status: "Checked Out",
     });
@@ -141,13 +144,17 @@ export default function CheckOutPage() {
 
     const { error: vehicleError } = await supabase
       .from("vehicles")
-      .update({ status: "Checked Out" })
+      .update({
+        status: "Checked Out",
+        current_location: "Checked Out",
+      })
       .eq("id", selectedVehicle.id);
 
     if (vehicleError) return alert(vehicleError.message);
 
     alert(`Car #${selectedVehicle.car_number} checked out.`);
 
+    setLocation("");
     setSelectedVehicle(null);
     setPersonSearch("");
     setSelectedPerson(null);
@@ -244,7 +251,7 @@ export default function CheckOutPage() {
                     <div className="font-semibold">
                       {p.first_name} {p.last_name}
                     </div>
-                    <div className="text-sm text-gray-800">
+                    <div className="text-sm text-gray-600">
                       {p.role || "Misc"}
                       {p.phone ? ` — ${p.phone}` : ""}
                     </div>

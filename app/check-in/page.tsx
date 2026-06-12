@@ -27,7 +27,6 @@ const RETURN_LOCATIONS = [
   "Return Lot",
   "On Course",
   "Smart Lexus",
-  "Checked Out",
 ];
 
 export default function CheckInPage() {
@@ -35,7 +34,7 @@ export default function CheckInPage() {
   const [checkouts, setCheckouts] = useState<Checkout[]>([]);
   const [carSearch, setCarSearch] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-  const [returnLocation, setReturnLocation] = useState("");
+  const [returnLocation, setReturnLocation] = useState("Airport");
   const [checkedInBy, setCheckedInBy] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -110,7 +109,7 @@ export default function CheckInPage() {
 
     setCarSearch("");
     setSelectedVehicle(null);
-    setReturnLocation("");
+    setReturnLocation("Airport");
     setCheckedInBy("");
     setNotes("");
 
@@ -190,7 +189,6 @@ export default function CheckInPage() {
           onChange={(e) => setReturnLocation(e.target.value)}
           className="border rounded p-3 w-full mb-4"
         >
-          <option value="">Select...</option>
           {RETURN_LOCATIONS.map((loc) => (
             <option key={loc} value={loc}>
               {loc}
