@@ -328,54 +328,112 @@ export default function PlayerArrivalsPage() {
     loadData();
   }
 
+  function getTravelCode(arrival: Arrival) {
+    if (arrival.arrival_method === "Commercial Flight") {
+      return arrival.flight_number || "No flight #";
+    }
+
+    if (arrival.arrival_method === "Private Aircraft") {
+      return arrival.tail_number || "No tail #";
+    }
+
+    return "";
+  }
+
   function ArrivalCard({ arrival }: { arrival: Arrival }) {
     return (
-      <div className="p-4 border-b">
-        <div className="flex justify-between gap-3">
-          <div>
-            <p className="font-bold text-lg text-[#1F4E1A]">
-              {arrival.player_first_name} {arrival.player_last_name}
-            </p>
-
-            <p className="text-sm text-gray-600">
-              {arrival.arrival_method}
-              {arrival.airline ? ` — ${arrival.airline}` : ""}
-              {arrival.flight_number ? ` ${arrival.flight_number}` : ""}
-              {arrival.flight_origin ? ` — From: ${arrival.flight_origin}` : ""}
-              {arrival.tail_number ? ` — Tail: ${arrival.tail_number}` : ""}
-            </p>
-
-            <p className="text-sm text-gray-600">
-              {formatDate(arrival.arrival_date)}{" "}
+      <details className="border-b group">
+        <summary className="cursor-pointer list-none p-3 hover:bg-gray-50">
+          <div className="grid grid-cols-[90px_1fr] md:grid-cols-[100px_1fr_180px_140px] gap-2 items-center">
+            <div className="font-bold text-[#1F4E1A]">
               {formatTime(arrival.estimated_arrival_time)}
-            </p>
+            </div>
 
-            {arrival.notes && (
-              <p className="text-sm text-gray-700 mt-1">
-                Notes: {arrival.notes}
+            <div className="font-semibold">
+              {arrival.player_first_name} {arrival.player_last_name}
+            </div>
+
+            <div className="text-sm text-gray-700">
+              {arrival.arrival_method}
+            </div>
+
+            <div className="text-sm font-semibold text-gray-700">
+              {getTravelCode(arrival)}
+            </div>
+          </div>
+        </summary>
+
+        <div className="px-3 pb-4 bg-gray-50">
+          <div className="bg-white rounded border p-3">
+            <div className="grid gap-2 md:grid-cols-2 text-sm mb-3">
+              <p>
+                <span className="font-semibold">Date:</span>{" "}
+                {formatDate(arrival.arrival_date)}
               </p>
-            )}
+
+              <p>
+                <span className="font-semibold">Time:</span>{" "}
+                {formatTime(arrival.estimated_arrival_time)}
+              </p>
+
+              <p>
+                <span className="font-semibold">Method:</span>{" "}
+                {arrival.arrival_method}
+              </p>
+
+              {arrival.airline && (
+                <p>
+                  <span className="font-semibold">Airline:</span>{" "}
+                  {arrival.airline}
+                </p>
+              )}
+
+              {arrival.flight_number && (
+                <p>
+                  <span className="font-semibold">Flight #:</span>{" "}
+                  {arrival.flight_number}
+                </p>
+              )}
+
+              {arrival.flight_origin && (
+                <p>
+                  <span className="font-semibold">Coming From:</span>{" "}
+                  {arrival.flight_origin}
+                </p>
+              )}
+
+              {arrival.tail_number && (
+                <p>
+                  <span className="font-semibold">Tail #:</span>{" "}
+                  {arrival.tail_number}
+                </p>
+              )}
+            </div>
+
+            <label className="block text-xs font-semibold text-gray-500 mb-1">
+              Notes
+            </label>
+
+            <div className="grid gap-3 md:grid-cols-[1fr_120px]">
+              <textarea
+                defaultValue={arrival.notes || ""}
+                onBlur={(e) =>
+                  updateArrival(arrival.id, { notes: e.target.value })
+                }
+                placeholder="Notes..."
+                className="border rounded p-2 w-full"
+              />
+
+              <button
+                onClick={() => deleteArrival(arrival.id)}
+                className="bg-gray-200 hover:bg-gray-300 rounded px-3 py-2"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
-
-        <div className="grid gap-3 md:grid-cols-[1fr_120px] mt-3">
-          <textarea
-            defaultValue={arrival.notes || ""}
-            onBlur={(e) =>
-              updateArrival(arrival.id, { notes: e.target.value })
-            }
-            placeholder="Notes..."
-            className="border rounded p-2 w-full"
-          />
-
-          <button
-            onClick={() => deleteArrival(arrival.id)}
-            className="bg-gray-200 hover:bg-gray-300 rounded px-3 py-2"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
+      </details>
     );
   }
 
@@ -646,3 +704,4 @@ export default function PlayerArrivalsPage() {
     </main>
   );
 }
+
