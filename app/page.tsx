@@ -23,7 +23,7 @@ export default function Home() {
           JDC Transportation
         </h1>
 
-        <p className="text-gray-600 text-center mb-4">
+        <p className="text-gray-800 text-center mb-4">
           Enter PIN to access the system
         </p>
 

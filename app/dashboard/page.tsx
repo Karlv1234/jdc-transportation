@@ -90,7 +90,7 @@ export default function DashboardPage() {
 
         <div className="bg-white rounded-lg shadow p-4">
           <p className="text-sm text-gray-500">Hold</p>
-          <p className="text-3xl font-bold text-gray-600">{hold}</p>
+          <p className="text-3xl font-bold text-gray-800">{hold}</p>
         </div>
       </div>
 
@@ -136,16 +136,16 @@ export default function DashboardPage() {
                 </p>
 
                 {c.on_behalf_of && (
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-800">
                     On behalf of: {c.on_behalf_of}
                   </p>
                 )}
 
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-800">
                   Location: {c.start_location || "Unknown"}
                 </p>
 
-                <p className="text-sm text-gray-600">By: {c.checked_out_by}</p>
+                <p className="text-sm text-gray-800">By: {c.checked_out_by}</p>
 
                 {c.time_out && (
                   <p className="text-xs text-gray-500">

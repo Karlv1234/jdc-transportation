@@ -11,7 +11,7 @@ export default function AdminPage() {
             Import Data
           </h2>
 
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-gray-800 mb-4">
             Upload car lists and people/player lists from CSV templates.
           </p>
 

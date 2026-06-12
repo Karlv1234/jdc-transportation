@@ -194,7 +194,7 @@ export default function CarsPage() {
           </button>
         </div>
 
-        <p className="text-sm text-gray-600 mt-3">
+        <p className="text-sm text-gray-800 mt-3">
           Selected: {selectedIds.length}
         </p>
       </div>
@@ -239,7 +239,7 @@ export default function CarsPage() {
                   </span>
                 </div>
 
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-800">
                   {v.color || ""} {v.make || ""} {v.type || ""}
                 </p>
 

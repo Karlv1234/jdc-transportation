@@ -98,7 +98,7 @@ export default function HistoryPage() {
                 </p>
 
                 {c.on_behalf_of && (
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-800">
                     On behalf of: {c.on_behalf_of}
                   </p>
                 )}

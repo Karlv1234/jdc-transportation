@@ -244,7 +244,7 @@ export default function CheckOutPage() {
                     <div className="font-semibold">
                       {p.first_name} {p.last_name}
                     </div>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-800">
                       {p.role || "Misc"}
                       {p.phone ? ` — ${p.phone}` : ""}
                     </div>

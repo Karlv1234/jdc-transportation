@@ -147,11 +147,11 @@ export default function CheckInPage() {
                       Car #{v.car_number}
                     </div>
 
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-800">
                       {v.model} — {v.type} — {v.color}
                     </div>
 
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-gray-800">
                       {checkout?.person_first_name}{" "}
                       {checkout?.person_last_name}
                     </div>

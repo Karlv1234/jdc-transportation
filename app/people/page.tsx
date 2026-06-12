@@ -107,7 +107,7 @@ export default function PeoplePage() {
                   {person.last_name}, {person.first_name}
                 </p>
 
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-800">
                   {person.role || "Misc"}
                   {person.phone ? ` — ${person.phone}` : ""}
                   {person.email ? ` — ${person.email}` : ""}

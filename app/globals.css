@@ -24,3 +24,35 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+html,
+body {
+  background: white;
+  color: #111827;
+}
+
+input,
+select,
+textarea,
+button {
+  color: #111827;
+}
+
+input,
+select,
+textarea {
+  background: white;
+  border-color: #9ca3af;
+}
+
+::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+
+[data-slot="popover-content"],
+[cmdk-root],
+[cmdk-list],
+[cmdk-item] {
+  background: white;
+  color: #111827;
+}
