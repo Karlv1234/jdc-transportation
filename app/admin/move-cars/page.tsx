@@ -6,6 +6,7 @@ import { supabase } from "../../../src/lib/supabase";
 const LOCATION_OPTIONS = [
   "Airport",
   "Trailer",
+  "Elliot",
   "Return Lot",
   "On Course",
   "Smart Lexus",

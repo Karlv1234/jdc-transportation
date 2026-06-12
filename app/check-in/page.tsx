@@ -23,6 +23,7 @@ type Checkout = {
 
 const RETURN_LOCATIONS = [
   "Airport",
+  "Elliot",
   "Trailer",
   "Return Lot",
   "On Course",
