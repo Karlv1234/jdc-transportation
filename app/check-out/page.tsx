@@ -31,6 +31,37 @@ type Person = {
   role: string | null;
 };
 
+type ArrivalPrefill = {
+  id: number;
+  person_id: number | null;
+  arrival_method: string;
+  airline: string | null;
+  flight_number: string | null;
+  flight_origin: string | null;
+  tail_number: string | null;
+  arrival_date: string | null;
+  estimated_arrival_time: string | null;
+  notes: string | null;
+};
+
+function formatArrivalPrefillNote(arrival: ArrivalPrefill) {
+  const details = [
+    `Arrival: ${arrival.arrival_method}`,
+    arrival.airline ? `Airline: ${arrival.airline}` : "",
+    arrival.flight_number ? `Flight: ${arrival.flight_number}` : "",
+    arrival.flight_origin ? `From: ${arrival.flight_origin}` : "",
+    arrival.tail_number ? `Tail: ${arrival.tail_number}` : "",
+    arrival.arrival_date ? `Date: ${arrival.arrival_date}` : "",
+    arrival.estimated_arrival_time ? `Time: ${arrival.estimated_arrival_time}` : "",
+  ].filter(Boolean);
+
+  if (arrival.notes) {
+    details.push(`Arrival notes: ${arrival.notes}`);
+  }
+
+  return details.join(" | ");
+}
+
 function RequiredAsterisk() {
   return <span className="text-red-600 font-bold ml-1">*</span>;
 }
@@ -45,6 +76,7 @@ export default function CheckOutPage() {
   const [onBehalfOf, setOnBehalfOf] = useState("");
   const [checkedOutBy, setCheckedOutBy] = useState("");
   const [notes, setNotes] = useState("");
+  const [prefillLoaded, setPrefillLoaded] = useState(false);
 
   async function loadData() {
     const { data: vehicleData } = await supabase
@@ -64,6 +96,58 @@ export default function CheckOutPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (prefillLoaded || people.length === 0) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const personIdParam = Number(params.get("personId"));
+    const arrivalIdParam = Number(params.get("arrivalId"));
+
+    const hasPersonId = Number.isInteger(personIdParam) && personIdParam > 0;
+    const hasArrivalId = Number.isInteger(arrivalIdParam) && arrivalIdParam > 0;
+
+    if (!hasPersonId && !hasArrivalId) {
+      setPrefillLoaded(true);
+      return;
+    }
+
+    async function prefillCheckout() {
+      let personToSelect = hasPersonId
+        ? people.find((person) => person.id === personIdParam) || null
+        : null;
+
+      if (hasArrivalId) {
+        const { data: arrivalData, error: arrivalError } = await supabase
+          .from("player_arrivals")
+          .select(
+            "id, person_id, arrival_method, airline, flight_number, flight_origin, tail_number, arrival_date, estimated_arrival_time, notes"
+          )
+          .eq("id", arrivalIdParam)
+          .single();
+
+        if (!arrivalError && arrivalData) {
+          const arrival = arrivalData as ArrivalPrefill;
+
+          if (!personToSelect && arrival.person_id) {
+            personToSelect =
+              people.find((person) => person.id === arrival.person_id) || null;
+          }
+
+          setNotes(formatArrivalPrefillNote(arrival));
+        }
+      }
+
+      if (personToSelect) {
+        setSelectedPerson(personToSelect);
+        setPersonSearch(`${personToSelect.first_name} ${personToSelect.last_name}`);
+      }
+
+      setPrefillLoaded(true);
+    }
+
+    prefillCheckout();
+  }, [people, prefillLoaded]);
 
   const availableVehicles = vehicles.filter(
     (v) =>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "../../src/lib/supabase";
 
 type Person = {
@@ -414,7 +415,7 @@ export default function PlayerArrivalsPage() {
               Notes
             </label>
 
-            <div className="grid gap-3 md:grid-cols-[1fr_120px]">
+            <div className="grid gap-3 md:grid-cols-[1fr_120px_120px]">
               <textarea
                 defaultValue={arrival.notes || ""}
                 onBlur={(e) =>
@@ -423,6 +424,22 @@ export default function PlayerArrivalsPage() {
                 placeholder="Notes..."
                 className="border rounded p-2 w-full"
               />
+
+              {arrival.person_id ? (
+                <Link
+                  href={`/check-out?personId=${arrival.person_id}&arrivalId=${arrival.id}`}
+                  className="bg-[#367C2B] hover:bg-[#2e6e24] text-white rounded px-3 py-2 text-center font-semibold"
+                >
+                  Check Out
+                </Link>
+              ) : (
+                <button
+                  disabled
+                  className="bg-gray-100 text-gray-400 rounded px-3 py-2 cursor-not-allowed"
+                >
+                  Check Out
+                </button>
+              )}
 
               <button
                 onClick={() => deleteArrival(arrival.id)}
