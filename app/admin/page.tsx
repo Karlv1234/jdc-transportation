@@ -39,6 +39,24 @@ export default function AdminPage() {
             Open Mass Move Tool
           </Link>
         </div>
+
+        <div className="bg-white rounded-lg shadow p-4 border-t-4 border-[#367C2B]">
+          <h2 className="text-xl font-bold text-[#1F4E1A] mb-2">
+            Vehicle Timeline
+          </h2>
+
+          <p className="text-sm text-gray-600 mb-4">
+            View everything that has happened to a car, including loading,
+            moves, checkouts, check-ins, and status changes.
+          </p>
+
+          <Link
+            href="/admin/timeline"
+            className="inline-block bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded font-semibold"
+          >
+            Open Vehicle Timeline
+          </Link>
+        </div>
       </div>
     </main>
   );
