@@ -23,12 +23,16 @@ type Checkout = {
 
 const RETURN_LOCATIONS = [
   "Airport",
-  "Elliot",
   "Trailer",
   "Return Lot",
   "On Course",
   "Smart Lexus",
+  "Elliott",
 ];
+
+function RequiredAsterisk() {
+  return <span className="text-red-600 font-bold ml-1">*</span>;
+}
 
 export default function CheckInPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -122,7 +126,14 @@ export default function CheckInPage() {
       <h1 className="text-3xl font-bold mb-4">Check In</h1>
 
       <div className="bg-white rounded-lg shadow p-4 max-w-xl">
-        <label className="block font-semibold mb-1">Search Car #</label>
+        <p className="text-xs text-gray-500 mb-3">
+          <RequiredAsterisk /> indicates a required field.
+        </p>
+
+        <label className="block font-semibold mb-1">
+          Search Car #
+          <RequiredAsterisk />
+        </label>
 
         <input
           value={carSearch}
@@ -132,6 +143,7 @@ export default function CheckInPage() {
           }}
           placeholder="Type car number..."
           className="border rounded p-3 w-full"
+          required
         />
 
         {!selectedVehicle && carSearch && (
@@ -184,11 +196,15 @@ export default function CheckInPage() {
           </div>
         )}
 
-        <label className="block font-semibold mb-1">Return Location</label>
+        <label className="block font-semibold mb-1">
+          Return Location
+          <RequiredAsterisk />
+        </label>
         <select
           value={returnLocation}
           onChange={(e) => setReturnLocation(e.target.value)}
           className="border rounded p-3 w-full mb-4"
+          required
         >
           {RETURN_LOCATIONS.map((loc) => (
             <option key={loc} value={loc}>
@@ -197,12 +213,16 @@ export default function CheckInPage() {
           ))}
         </select>
 
-        <label className="block font-semibold mb-1">Checked In By</label>
+        <label className="block font-semibold mb-1">
+          Checked In By
+          <RequiredAsterisk />
+        </label>
         <input
           value={checkedInBy}
           onChange={(e) => setCheckedInBy(e.target.value)}
           placeholder="Initials"
           className="border rounded p-3 w-full mb-4"
+          required
         />
 
         <label className="block font-semibold mb-1">Notes</label>

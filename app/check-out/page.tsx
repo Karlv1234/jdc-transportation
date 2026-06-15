@@ -31,6 +31,10 @@ type Person = {
   role: string | null;
 };
 
+function RequiredAsterisk() {
+  return <span className="text-red-600 font-bold ml-1">*</span>;
+}
+
 export default function CheckOutPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
@@ -169,6 +173,10 @@ export default function CheckOutPage() {
       <h1 className="text-3xl font-bold mb-4">Check Out</h1>
 
       <div className="bg-white rounded-lg shadow p-4 max-w-xl">
+        <p className="text-xs text-gray-500 mb-3">
+          <RequiredAsterisk /> indicates a required field.
+        </p>
+
         <label className="block font-semibold mb-1">Location</label>
         <select
           value={location}
@@ -186,7 +194,10 @@ export default function CheckOutPage() {
           ))}
         </select>
 
-        <label className="block font-semibold mb-1">Available Car</label>
+        <label className="block font-semibold mb-1">
+          Available Car
+          <RequiredAsterisk />
+        </label>
         <select
           value={selectedVehicle?.id || ""}
           onChange={(e) => {
@@ -196,6 +207,7 @@ export default function CheckOutPage() {
             setSelectedVehicle(vehicle || null);
           }}
           className="border rounded p-3 w-full mb-4"
+          required
         >
           <option value="">Select a car...</option>
           {availableVehicles.map((v) => (
@@ -214,7 +226,10 @@ export default function CheckOutPage() {
           </div>
         )}
 
-        <label className="block font-semibold mb-1">Person</label>
+        <label className="block font-semibold mb-1">
+          Person
+          <RequiredAsterisk />
+        </label>
         <input
           value={personSearch}
           onChange={(e) => {
@@ -223,6 +238,7 @@ export default function CheckOutPage() {
           }}
           placeholder="Type player/staff name..."
           className="border rounded p-3 w-full"
+          required
         />
 
         {!selectedPerson && personSearch && (
@@ -284,12 +300,16 @@ export default function CheckOutPage() {
           className="border rounded p-3 w-full mb-4"
         />
 
-        <label className="block font-semibold mb-1">Checked Out By</label>
+        <label className="block font-semibold mb-1">
+          Checked Out By
+          <RequiredAsterisk />
+        </label>
         <input
           value={checkedOutBy}
           onChange={(e) => setCheckedOutBy(e.target.value)}
           placeholder="Initials"
           className="border rounded p-3 w-full mb-4"
+          required
         />
 
         <label className="block font-semibold mb-1">Notes</label>
