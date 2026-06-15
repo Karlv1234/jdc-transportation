@@ -30,15 +30,19 @@ type Checkout = {
 
 const LOCATION_OPTIONS = [
   "Airport",
-  "Elliot",
   "Trailer",
   "Return Lot",
   "On Course",
   "Smart Lexus",
   "Checked Out",
+  "Elliot",
 ];
 
 const STATUS_OPTIONS = ["Available", "Checked Out", "Hold"];
+
+function RequiredAsterisk() {
+  return <span className="text-red-600 font-bold ml-1">*</span>;
+}
 
 export default function CarsPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -265,50 +269,64 @@ export default function CarsPage() {
           className="border rounded p-3 w-full mb-3"
         />
 
-        <div className="grid gap-3 md:grid-cols-5">
-          <select
-            value={bulkLocation}
-            onChange={(e) => setBulkLocation(e.target.value)}
-            className="border rounded p-3"
-          >
-            <option value="">Bulk location...</option>
-            {LOCATION_OPTIONS.map((location) => (
-              <option key={location} value={location}>
-                {location}
-              </option>
-            ))}
-          </select>
+        <p className="text-xs text-gray-500 mb-2">
+          <RequiredAsterisk /> indicates a required field.
+        </p>
 
-          <select
-            value={bulkStatus}
-            onChange={(e) => setBulkStatus(e.target.value)}
-            className="border rounded p-3"
-          >
-            <option value="">Bulk status...</option>
-            {STATUS_OPTIONS.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
+        <div className="grid gap-3 md:grid-cols-5">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Bulk Location
+            </label>
+            <select
+              value={bulkLocation}
+              onChange={(e) => setBulkLocation(e.target.value)}
+              className="border rounded p-3 w-full"
+            >
+              <option value="">Bulk location...</option>
+              {LOCATION_OPTIONS.map((location) => (
+                <option key={location} value={location}>
+                  {location}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Bulk Status
+            </label>
+            <select
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+              className="border rounded p-3 w-full"
+            >
+              <option value="">Bulk status...</option>
+              {STATUS_OPTIONS.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <button
             onClick={applyBulkUpdate}
-            className="bg-[#367C2B] hover:bg-[#2e6e24] text-white rounded px-4 py-3 font-semibold"
+            className="bg-[#367C2B] hover:bg-[#2e6e24] text-white rounded px-4 py-3 font-semibold md:mt-5"
           >
             Update Selected
           </button>
 
           <button
             onClick={() => setSelectedIds([])}
-            className="bg-[#FFDE00] text-black rounded px-4 py-3 font-semibold"
+            className="bg-[#FFDE00] text-black rounded px-4 py-3 font-semibold md:mt-5"
           >
             Clear Selection
           </button>
 
           <button
             onClick={downloadCarsCsv}
-            className="bg-[#1F4E1A] text-white rounded px-4 py-3 font-semibold"
+            className="bg-[#1F4E1A] text-white rounded px-4 py-3 font-semibold md:mt-5"
           >
             Download CSV
           </button>
@@ -390,6 +408,7 @@ export default function CarsPage() {
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-1">
                     Location
+                    <RequiredAsterisk />
                   </label>
                   <select
                     value={v.current_location || ""}
@@ -399,6 +418,7 @@ export default function CarsPage() {
                       })
                     }
                     className="border rounded p-2 w-full"
+                    required
                   >
                     <option value="">Unknown</option>
                     {LOCATION_OPTIONS.map((location) => (
@@ -412,6 +432,7 @@ export default function CarsPage() {
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 mb-1">
                     Status
+                    <RequiredAsterisk />
                   </label>
                   <select
                     value={v.status || ""}
@@ -421,6 +442,7 @@ export default function CarsPage() {
                       })
                     }
                     className="border rounded p-2 w-full"
+                    required
                   >
                     <option value="">Unknown</option>
                     {STATUS_OPTIONS.map((status) => (
