@@ -1,0 +1,53 @@
+name: Restore Supabase from S3
+
+on:
+  workflow_dispatch:
+    inputs:
+      backup_s3_key:
+        description: "S3 key to restore from"
+        required: true
+        default: "jdc-backups/latest/jdc-backup-latest.json"
+      confirm_restore:
+        description: "Type YES_RESTORE_JDC to confirm this destructive restore"
+        required: true
+        default: ""
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Confirm restore approval text
+        run: |
+          if [ "${{ github.event.inputs.confirm_restore }}" != "YES_RESTORE_JDC" ]; then
+            echo "Restore blocked. You must type YES_RESTORE_JDC."
+            exit 1
+          fi
+
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Restore Supabase from S3 backup
+        run: node scripts/restore-from-s3.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_S3_BACKUP_BUCKET: jdc-transpo-backups-001
+          BACKUP_S3_KEY: ${{ github.event.inputs.backup_s3_key }}
+          CONFIRM_RESTORE: ${{ github.event.inputs.confirm_restore }}
