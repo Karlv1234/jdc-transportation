@@ -341,33 +341,13 @@ export default function PlayerArrivalsPage() {
     return "";
   }
 
-  function ArrivalCard({
-    arrival,
-    showDate = false,
-  }: {
-    arrival: Arrival;
-    showDate?: boolean;
-  }) {
+  function ArrivalCard({ arrival }: { arrival: Arrival }) {
     return (
       <details className="border-b group">
         <summary className="cursor-pointer list-none p-3 hover:bg-gray-50">
-          <div
-            className={
-              showDate
-                ? "grid grid-cols-[120px_1fr] md:grid-cols-[140px_1fr_180px_140px] gap-2 items-center"
-                : "grid grid-cols-[90px_1fr] md:grid-cols-[100px_1fr_180px_140px] gap-2 items-center"
-            }
-          >
-            <div className="text-[#1F4E1A]">
-              {showDate && (
-                <div className="text-xs font-semibold text-gray-600">
-                  {formatDate(arrival.arrival_date)}
-                </div>
-              )}
-
-              <div className="font-bold">
-                {formatTime(arrival.estimated_arrival_time)}
-              </div>
+          <div className="grid grid-cols-[90px_1fr] md:grid-cols-[100px_1fr_180px_140px] gap-2 items-center">
+            <div className="font-bold text-[#1F4E1A]">
+              {formatTime(arrival.estimated_arrival_time)}
             </div>
 
             <div className="font-semibold">
@@ -731,11 +711,7 @@ export default function PlayerArrivalsPage() {
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {filteredArrivals.map((arrival) => (
-          <ArrivalCard
-            key={arrival.id}
-            arrival={arrival}
-            showDate
-          />
+          <ArrivalCard key={arrival.id} arrival={arrival} />
         ))}
 
         {filteredArrivals.length === 0 && (
