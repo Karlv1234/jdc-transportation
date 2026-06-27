@@ -85,6 +85,24 @@ export default function DashboardPage() {
     );
   }
 
+  function normalizedStatus(vehicle: Vehicle) {
+    return (vehicle.status || "").trim().toLowerCase();
+  }
+
+  function vehicleIsCheckedOut(vehicle: Vehicle) {
+    return (
+      normalizedStatus(vehicle) === "checked out" ||
+      Boolean(getCheckoutForVehicle(vehicle))
+    );
+  }
+
+  function vehicleIsAvailable(vehicle: Vehicle) {
+    return (
+      normalizedStatus(vehicle) === "available" &&
+      !vehicleIsCheckedOut(vehicle)
+    );
+  }
+
   function showList(title: string, list: Vehicle[]) {
     setSelectedList({
       title,
@@ -119,15 +137,44 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-[#F5F5F5] p-4">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-3xl font-bold">Dashboard</h1>
+      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Click any car total or location to open the car list and use its
+            Check In or Check Out button.
+          </p>
+        </div>
 
-        <button
-          onClick={loadDashboard}
-          className="bg-[#1F4E1A] text-white px-4 py-2 rounded"
-        >
-          Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = "/check-in";
+            }}
+            className="rounded bg-[#367C2B] px-4 py-2 font-semibold text-white hover:bg-[#2e6e24]"
+          >
+            Quick Check In
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = "/check-out";
+            }}
+            className="rounded bg-[#FFDE00] px-4 py-2 font-semibold text-black hover:bg-yellow-300"
+          >
+            Quick Check Out
+          </button>
+
+          <button
+            type="button"
+            onClick={loadDashboard}
+            className="rounded bg-[#1F4E1A] px-4 py-2 text-white"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -258,7 +305,7 @@ export default function DashboardPage() {
                           {vehicle.status || "Unknown"}
                         </span>
 
-                        {vehicle.status === "Checked Out" ? (
+                        {vehicleIsCheckedOut(vehicle) ? (
                           <button
                             type="button"
                             onClick={() => openCheckIn(vehicle)}
@@ -266,7 +313,7 @@ export default function DashboardPage() {
                           >
                             Check In
                           </button>
-                        ) : vehicle.status === "Available" ? (
+                        ) : vehicleIsAvailable(vehicle) ? (
                           <button
                             type="button"
                             onClick={() => openCheckOut(vehicle)}
@@ -274,7 +321,11 @@ export default function DashboardPage() {
                           >
                             Check Out
                           </button>
-                        ) : null}
+                        ) : (
+                          <span className="text-xs text-gray-500">
+                            No action for {vehicle.status || "Unknown"}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
