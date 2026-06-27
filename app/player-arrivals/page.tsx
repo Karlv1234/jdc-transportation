@@ -111,6 +111,7 @@ export default function PlayerArrivalsPage() {
   const [editArrivalDate, setEditArrivalDate] = useState("");
   const [editArrivalTime, setEditArrivalTime] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [savingArrivalEdit, setSavingArrivalEdit] = useState(false);
 
   const today = dateToInputValue(new Date());
 
@@ -370,38 +371,47 @@ export default function PlayerArrivalsPage() {
       return;
     }
 
-    if (!editArrivalTime) {
-      alert("Please enter an estimated arrival time.");
-      return;
-    }
+    const isCommercial = editArrivalMethod === "Commercial Flight";
+    const isPrivate = editArrivalMethod === "Private Aircraft";
+    const isFlight = isCommercial || isPrivate;
 
-    const isFlight =
-      editArrivalMethod === "Commercial Flight" ||
-      editArrivalMethod === "Private Aircraft";
+    const updatePayload = {
+      arrival_method: editArrivalMethod,
+      airline: isCommercial || isPrivate ? editAirline.trim() || null : null,
+      flight_number: isCommercial ? editFlightNumber.trim() || null : null,
+      flight_origin: editFlightOrigin.trim() || null,
+      tail_number: isPrivate ? editTailNumber.trim() || null : null,
+      arrival_date: editArrivalDate,
+      estimated_arrival_time: editArrivalTime || null,
+      notes: editNotes.trim() || null,
+    };
+
+    setSavingArrivalEdit(true);
 
     const { error } = await supabase
       .from("player_arrivals")
-      .update({
-        arrival_method: editArrivalMethod,
-        airline: editArrivalMethod === "Commercial Flight" ? editAirline : "",
-        flight_number:
-          editArrivalMethod === "Commercial Flight" ? editFlightNumber : "",
-        flight_origin: isFlight ? editFlightOrigin : "",
-        tail_number:
-          editArrivalMethod === "Private Aircraft" ? editTailNumber : "",
-        arrival_date: editArrivalDate,
-        estimated_arrival_time: editArrivalTime,
-        notes: editNotes,
-      })
+      .update(updatePayload)
       .eq("id", id);
+
+    setSavingArrivalEdit(false);
 
     if (error) {
       alert(error.message);
       return;
     }
 
+    setArrivals((current) =>
+      current.map((arrival) =>
+        arrival.id === id
+          ? {
+              ...arrival,
+              ...updatePayload,
+            }
+          : arrival
+      )
+    );
+
     setEditingArrivalId(null);
-    await loadData();
   }
 
   async function deleteArrival(id: number) {
@@ -458,7 +468,7 @@ export default function PlayerArrivalsPage() {
               )}
 
               <div className="font-bold">
-                {formatTime(arrival.estimated_arrival_time)}
+                {formatTime(arrival.estimated_arrival_time) || "Time TBD"}
               </div>
             </div>
 
@@ -476,245 +486,99 @@ export default function PlayerArrivalsPage() {
           </div>
         </summary>
 
-        <div className="px-3 pb-4 bg-gray-50">
-          <div className="bg-white rounded border p-3">
-            {editingArrivalId === arrival.id ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="font-bold text-[#1F4E1A]">Edit Arrival</h3>
-                  <span className="text-sm text-gray-600">
-                    {arrival.player_first_name} {arrival.player_last_name}
-                  </span>
-                </div>
+        <div className="bg-gray-50 px-3 pb-4">
+          <div className="rounded border bg-white p-3">
+            <div className="mb-3 grid gap-2 text-sm md:grid-cols-2">
+              <p>
+                <span className="font-semibold">Date:</span>{" "}
+                {formatDate(arrival.arrival_date)}
+              </p>
 
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-semibold mb-1">
-                      Arrival Method
-                    </label>
-                    <select
-                      value={editArrivalMethod}
-                      onChange={(e) => setEditArrivalMethod(e.target.value)}
-                      className="border rounded p-2 w-full"
-                    >
-                      {ARRIVAL_METHODS.map((method) => (
-                        <option key={method} value={method}>
-                          {method}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+              <p>
+                <span className="font-semibold">Time:</span>{" "}
+                {formatTime(arrival.estimated_arrival_time) || "TBD"}
+              </p>
 
-                  <div>
-                    <label className="block text-sm font-semibold mb-1">
-                      Arrival Date
-                    </label>
-                    <input
-                      type="date"
-                      value={editArrivalDate}
-                      onChange={(e) => setEditArrivalDate(e.target.value)}
-                      className="border rounded p-2 w-full"
-                    />
-                  </div>
+              <p>
+                <span className="font-semibold">Method:</span>{" "}
+                {arrival.arrival_method}
+              </p>
 
-                  <div>
-                    <label className="block text-sm font-semibold mb-1">
-                      Arrival Time
-                    </label>
-                    <input
-                      type="time"
-                      value={editArrivalTime}
-                      onChange={(e) => setEditArrivalTime(e.target.value)}
-                      className="border rounded p-2 w-full"
-                    />
-                  </div>
+              {arrival.airline && (
+                <p>
+                  <span className="font-semibold">
+                    {arrival.arrival_method === "Private Aircraft"
+                      ? "Operator:"
+                      : "Airline:"}
+                  </span>{" "}
+                  {arrival.airline}
+                </p>
+              )}
 
-                  {editArrivalMethod === "Commercial Flight" && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-semibold mb-1">
-                          Airline
-                        </label>
-                        <input
-                          value={editAirline}
-                          onChange={(e) => setEditAirline(e.target.value)}
-                          className="border rounded p-2 w-full"
-                        />
-                      </div>
+              {arrival.flight_number && (
+                <p>
+                  <span className="font-semibold">Flight #:</span>{" "}
+                  {arrival.flight_number}
+                </p>
+              )}
 
-                      <div>
-                        <label className="block text-sm font-semibold mb-1">
-                          Flight Number
-                        </label>
-                        <input
-                          value={editFlightNumber}
-                          onChange={(e) => setEditFlightNumber(e.target.value)}
-                          className="border rounded p-2 w-full"
-                        />
-                      </div>
+              {arrival.flight_origin && (
+                <p>
+                  <span className="font-semibold">Coming From:</span>{" "}
+                  {arrival.flight_origin}
+                </p>
+              )}
 
-                      <div>
-                        <label className="block text-sm font-semibold mb-1">
-                          Coming From
-                        </label>
-                        <input
-                          value={editFlightOrigin}
-                          onChange={(e) => setEditFlightOrigin(e.target.value)}
-                          className="border rounded p-2 w-full"
-                        />
-                      </div>
-                    </>
-                  )}
+              {arrival.tail_number && (
+                <p>
+                  <span className="font-semibold">Tail #:</span>{" "}
+                  {arrival.tail_number}
+                </p>
+              )}
+            </div>
 
-                  {editArrivalMethod === "Private Aircraft" && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-semibold mb-1">
-                          Tail Number
-                        </label>
-                        <input
-                          value={editTailNumber}
-                          onChange={(e) => setEditTailNumber(e.target.value)}
-                          className="border rounded p-2 w-full"
-                        />
-                      </div>
+            <div className="mb-3">
+              <p className="mb-1 text-xs font-semibold text-gray-500">
+                Notes
+              </p>
+              <p className="whitespace-pre-wrap text-sm">
+                {arrival.notes || "No notes"}
+              </p>
+            </div>
 
-                      <div>
-                        <label className="block text-sm font-semibold mb-1">
-                          Coming From
-                        </label>
-                        <input
-                          value={editFlightOrigin}
-                          onChange={(e) => setEditFlightOrigin(e.target.value)}
-                          className="border rounded p-2 w-full"
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => beginEditArrival(arrival)}
+                className="rounded bg-[#FFDE00] px-4 py-2 font-bold text-[#1F4E1A] hover:bg-yellow-300"
+              >
+                Edit Arrival
+              </button>
 
-                <div>
-                  <label className="block text-sm font-semibold mb-1">
-                    Notes
-                  </label>
-                  <textarea
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    rows={3}
-                    placeholder="Notes..."
-                    className="border rounded p-2 w-full"
-                  />
-                </div>
+              {arrival.person_id ? (
+                <Link
+                  href={`/check-out?personId=${arrival.person_id}&arrivalId=${arrival.id}`}
+                  className="rounded bg-[#367C2B] px-4 py-2 text-center font-semibold text-white hover:bg-[#2e6e24]"
+                >
+                  Check Out
+                </Link>
+              ) : (
+                <button
+                  disabled
+                  className="cursor-not-allowed rounded bg-gray-100 px-4 py-2 text-gray-400"
+                >
+                  Check Out
+                </button>
+              )}
 
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={cancelEditArrival}
-                    className="bg-gray-200 hover:bg-gray-300 rounded px-4 py-2 font-semibold"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => saveArrivalEdits(arrival.id)}
-                    className="bg-[#367C2B] hover:bg-[#2e6e24] text-white rounded px-4 py-2 font-semibold"
-                  >
-                    Save Changes
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="grid gap-2 md:grid-cols-2 text-sm mb-3">
-                  <p>
-                    <span className="font-semibold">Date:</span>{" "}
-                    {formatDate(arrival.arrival_date)}
-                  </p>
-
-                  <p>
-                    <span className="font-semibold">Time:</span>{" "}
-                    {formatTime(arrival.estimated_arrival_time)}
-                  </p>
-
-                  <p>
-                    <span className="font-semibold">Method:</span>{" "}
-                    {arrival.arrival_method}
-                  </p>
-
-                  {arrival.airline && (
-                    <p>
-                      <span className="font-semibold">Airline:</span>{" "}
-                      {arrival.airline}
-                    </p>
-                  )}
-
-                  {arrival.flight_number && (
-                    <p>
-                      <span className="font-semibold">Flight #:</span>{" "}
-                      {arrival.flight_number}
-                    </p>
-                  )}
-
-                  {arrival.flight_origin && (
-                    <p>
-                      <span className="font-semibold">Coming From:</span>{" "}
-                      {arrival.flight_origin}
-                    </p>
-                  )}
-
-                  {arrival.tail_number && (
-                    <p>
-                      <span className="font-semibold">Tail #:</span>{" "}
-                      {arrival.tail_number}
-                    </p>
-                  )}
-                </div>
-
-                <div className="mb-3">
-                  <p className="text-xs font-semibold text-gray-500 mb-1">
-                    Notes
-                  </p>
-                  <p className="text-sm whitespace-pre-wrap">
-                    {arrival.notes || "No notes"}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => beginEditArrival(arrival)}
-                    className="bg-[#FFDE00] hover:bg-yellow-300 text-[#1F4E1A] rounded px-4 py-2 font-bold"
-                  >
-                    Edit Record
-                  </button>
-
-                  {arrival.person_id ? (
-                    <Link
-                      href={`/check-out?personId=${arrival.person_id}&arrivalId=${arrival.id}`}
-                      className="bg-[#367C2B] hover:bg-[#2e6e24] text-white rounded px-4 py-2 text-center font-semibold"
-                    >
-                      Check Out
-                    </Link>
-                  ) : (
-                    <button
-                      disabled
-                      className="bg-gray-100 text-gray-400 rounded px-4 py-2 cursor-not-allowed"
-                    >
-                      Check Out
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => deleteArrival(arrival.id)}
-                    className="bg-gray-200 hover:bg-gray-300 rounded px-4 py-2"
-                  >
-                    Delete
-                  </button>
-                </div>
-              </>
-            )}
+              <button
+                type="button"
+                onClick={() => deleteArrival(arrival.id)}
+                className="rounded bg-gray-200 px-4 py-2 hover:bg-gray-300"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       </details>
@@ -1089,6 +953,181 @@ export default function PlayerArrivalsPage() {
           <div className="p-4 text-gray-500">No active arrivals found.</div>
         )}
       </div>
+
+      {editingArrivalId !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3 md:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-arrival-title"
+        >
+          <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b bg-[#1F4E1A] px-4 py-4 text-white md:px-6">
+              <div>
+                <h2 id="edit-arrival-title" className="text-xl font-bold">
+                  Edit Arrival
+                </h2>
+                <p className="mt-1 text-sm text-white/85">
+                  {arrivals.find((arrival) => arrival.id === editingArrivalId)
+                    ?.player_first_name}{" "}
+                  {arrivals.find((arrival) => arrival.id === editingArrivalId)
+                    ?.player_last_name}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={cancelEditArrival}
+                disabled={savingArrivalEdit}
+                className="rounded px-3 py-1 text-2xl leading-none hover:bg-white/15 disabled:opacity-50"
+                aria-label="Close editor"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-4 md:p-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block font-semibold">
+                    Arrival Method
+                  </label>
+                  <select
+                    value={editArrivalMethod}
+                    onChange={(e) => setEditArrivalMethod(e.target.value)}
+                    className="w-full rounded border bg-white p-3"
+                  >
+                    {ARRIVAL_METHODS.map((method) => (
+                      <option key={method} value={method}>
+                        {method}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-semibold">
+                    Arrival Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editArrivalDate}
+                    onChange={(e) => setEditArrivalDate(e.target.value)}
+                    className="w-full rounded border p-3"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-semibold">
+                    Estimated Arrival Time
+                  </label>
+                  <input
+                    type="time"
+                    value={editArrivalTime}
+                    onChange={(e) => setEditArrivalTime(e.target.value)}
+                    className="w-full rounded border p-3"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    This may be left blank when the time is still TBD.
+                  </p>
+                </div>
+
+                {(editArrivalMethod === "Commercial Flight" ||
+                  editArrivalMethod === "Private Aircraft") && (
+                  <div>
+                    <label className="mb-1 block font-semibold">
+                      {editArrivalMethod === "Private Aircraft"
+                        ? "Operator"
+                        : "Airline"}
+                    </label>
+                    <input
+                      value={editAirline}
+                      onChange={(e) => setEditAirline(e.target.value)}
+                      className="w-full rounded border p-3"
+                      placeholder={
+                        editArrivalMethod === "Private Aircraft"
+                          ? "Example: NetJets"
+                          : "Example: American"
+                      }
+                    />
+                  </div>
+                )}
+
+                {editArrivalMethod === "Commercial Flight" && (
+                  <div>
+                    <label className="mb-1 block font-semibold">
+                      Flight Number
+                    </label>
+                    <input
+                      value={editFlightNumber}
+                      onChange={(e) => setEditFlightNumber(e.target.value)}
+                      className="w-full rounded border p-3"
+                      placeholder="Example: AA4034"
+                    />
+                  </div>
+                )}
+
+                {editArrivalMethod === "Private Aircraft" && (
+                  <div>
+                    <label className="mb-1 block font-semibold">
+                      Tail Number
+                    </label>
+                    <input
+                      value={editTailNumber}
+                      onChange={(e) => setEditTailNumber(e.target.value)}
+                      className="w-full rounded border p-3"
+                      placeholder="Example: N444AM"
+                    />
+                  </div>
+                )}
+
+                <div className="md:col-span-2">
+                  <label className="mb-1 block font-semibold">
+                    Coming From / Origin
+                  </label>
+                  <input
+                    value={editFlightOrigin}
+                    onChange={(e) => setEditFlightOrigin(e.target.value)}
+                    className="w-full rounded border p-3"
+                    placeholder="Example: Chicago ORD"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-1 block font-semibold">Notes</label>
+                  <textarea
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    rows={5}
+                    className="w-full rounded border p-3"
+                    placeholder="Party size, luggage, vehicle request, pickup details..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2 border-t bg-gray-50 px-4 py-4 md:px-6">
+              <button
+                type="button"
+                onClick={cancelEditArrival}
+                disabled={savingArrivalEdit}
+                className="rounded bg-gray-200 px-5 py-3 font-semibold hover:bg-gray-300 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => saveArrivalEdits(editingArrivalId)}
+                disabled={savingArrivalEdit}
+                className="rounded bg-[#367C2B] px-5 py-3 font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingArrivalEdit ? "Saving..." : "Save Arrival"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
