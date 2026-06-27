@@ -35,7 +35,7 @@ const LOCATION_OPTIONS = [
   "On Course",
   "Smart Lexus",
   "Checked Out",
-  "Elliot",
+  "Elliott",
 ];
 
 const STATUS_OPTIONS = ["Available", "Checked Out", "Hold"];
@@ -177,6 +177,15 @@ export default function CarsPage() {
     if (status === "Checked Out") return "bg-[#FFDE00] text-black";
     if (status === "Available") return "bg-[#367C2B] text-white";
     return "bg-gray-300 text-black";
+  }
+
+  function openCheckIn(vehicle: Vehicle) {
+    const params = new URLSearchParams({
+      vehicleId: String(vehicle.id),
+      carNumber: String(vehicle.car_number),
+    });
+
+    window.location.href = `/check-in?${params.toString()}`;
   }
 
   function csvSafe(value: string | number | null | undefined) {
@@ -357,7 +366,7 @@ export default function CarsPage() {
             return (
               <div
                 key={v.id}
-                className="p-4 border-b grid gap-3 md:grid-cols-[40px_1fr_160px_160px] md:items-center"
+                className="p-4 border-b grid gap-3 md:grid-cols-[40px_1fr_160px_160px_120px] md:items-center"
               >
                 <input
                   type="checkbox"
@@ -451,6 +460,20 @@ export default function CarsPage() {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="md:text-right">
+                  {(v.status === "Checked Out" || checkout) ? (
+                    <button
+                      type="button"
+                      onClick={() => openCheckIn(v)}
+                      className="w-full rounded bg-[#367C2B] px-3 py-2 font-semibold text-white hover:bg-[#2e6e24]"
+                    >
+                      Check In
+                    </button>
+                  ) : (
+                    <span className="text-sm text-gray-400">—</span>
+                  )}
                 </div>
               </div>
             );

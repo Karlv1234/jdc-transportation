@@ -99,21 +99,64 @@ export default function CheckOutPage() {
   }, []);
 
   useEffect(() => {
-    if (prefillLoaded || people.length === 0) return;
+    if (
+      prefillLoaded ||
+      vehicles.length === 0 ||
+      people.length === 0
+    ) {
+      return;
+    }
 
     const params = new URLSearchParams(window.location.search);
     const personIdParam = Number(params.get("personId"));
     const arrivalIdParam = Number(params.get("arrivalId"));
+    const vehicleIdParam = Number(params.get("vehicleId"));
+    const carNumberParam = Number(params.get("carNumber"));
 
     const hasPersonId = Number.isInteger(personIdParam) && personIdParam > 0;
     const hasArrivalId = Number.isInteger(arrivalIdParam) && arrivalIdParam > 0;
+    const hasVehicleId =
+      Number.isInteger(vehicleIdParam) && vehicleIdParam > 0;
+    const hasCarNumber =
+      Number.isInteger(carNumberParam) && carNumberParam > 0;
 
-    if (!hasPersonId && !hasArrivalId) {
+    if (
+      !hasPersonId &&
+      !hasArrivalId &&
+      !hasVehicleId &&
+      !hasCarNumber
+    ) {
       setPrefillLoaded(true);
       return;
     }
 
     async function prefillCheckout() {
+      const vehicleToSelect =
+        (hasVehicleId
+          ? vehicles.find((vehicle) => vehicle.id === vehicleIdParam)
+          : null) ||
+        (hasCarNumber
+          ? vehicles.find(
+              (vehicle) => vehicle.car_number === carNumberParam
+            )
+          : null) ||
+        null;
+
+      if (
+        vehicleToSelect &&
+        vehicleToSelect.status !== "Checked Out"
+      ) {
+        setSelectedVehicle(vehicleToSelect);
+        setVehicleSearch(String(vehicleToSelect.car_number));
+
+        if (
+          vehicleToSelect.current_location &&
+          vehicleToSelect.current_location !== "Checked Out"
+        ) {
+          setLocation(vehicleToSelect.current_location);
+        }
+      }
+
       let personToSelect = hasPersonId
         ? people.find((person) => person.id === personIdParam) || null
         : null;
@@ -141,14 +184,16 @@ export default function CheckOutPage() {
 
       if (personToSelect) {
         setSelectedPerson(personToSelect);
-        setPersonSearch(`${personToSelect.first_name} ${personToSelect.last_name}`);
+        setPersonSearch(
+          `${personToSelect.first_name} ${personToSelect.last_name}`
+        );
       }
 
       setPrefillLoaded(true);
     }
 
     prefillCheckout();
-  }, [people, prefillLoaded]);
+  }, [vehicles, people, prefillLoaded]);
 
   const availableVehicles = vehicles.filter(
     (v) =>

@@ -42,6 +42,7 @@ export default function CheckInPage() {
   const [returnLocation, setReturnLocation] = useState("Airport");
   const [checkedInBy, setCheckedInBy] = useState("");
   const [notes, setNotes] = useState("");
+  const [prefillLoaded, setPrefillLoaded] = useState(false);
 
   async function loadData() {
     const { data: vehicleData } = await supabase
@@ -62,6 +63,40 @@ export default function CheckInPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (prefillLoaded || vehicles.length === 0) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const vehicleIdParam = Number(params.get("vehicleId"));
+    const carNumberParam = Number(params.get("carNumber"));
+
+    const hasVehicleId =
+      Number.isInteger(vehicleIdParam) && vehicleIdParam > 0;
+    const hasCarNumber =
+      Number.isInteger(carNumberParam) && carNumberParam > 0;
+
+    if (!hasVehicleId && !hasCarNumber) {
+      setPrefillLoaded(true);
+      return;
+    }
+
+    const vehicle =
+      (hasVehicleId
+        ? vehicles.find((item) => item.id === vehicleIdParam)
+        : null) ||
+      (hasCarNumber
+        ? vehicles.find((item) => item.car_number === carNumberParam)
+        : null) ||
+      null;
+
+    if (vehicle) {
+      setSelectedVehicle(vehicle);
+      setCarSearch(String(vehicle.car_number));
+    }
+
+    setPrefillLoaded(true);
+  }, [vehicles, prefillLoaded]);
 
   const matchingVehicles = vehicles
     .filter((v) => String(v.car_number).includes(carSearch.trim()))
