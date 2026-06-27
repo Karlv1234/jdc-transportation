@@ -91,6 +91,24 @@ export default function CarsPage() {
     );
   }
 
+  function normalizedStatus(vehicle: Vehicle) {
+    return (vehicle.status || "").trim().toLowerCase();
+  }
+
+  function vehicleIsCheckedOut(vehicle: Vehicle) {
+    return (
+      normalizedStatus(vehicle) === "checked out" ||
+      Boolean(getCheckoutForVehicle(vehicle))
+    );
+  }
+
+  function vehicleIsAvailable(vehicle: Vehicle) {
+    return (
+      normalizedStatus(vehicle) === "available" &&
+      !vehicleIsCheckedOut(vehicle)
+    );
+  }
+
   const filteredVehicles = vehicles.filter((v) => {
     const checkout = getCheckoutForVehicle(v);
 
@@ -186,6 +204,15 @@ export default function CarsPage() {
     });
 
     window.location.href = `/check-in?${params.toString()}`;
+  }
+
+  function openCheckOut(vehicle: Vehicle) {
+    const params = new URLSearchParams({
+      vehicleId: String(vehicle.id),
+      carNumber: String(vehicle.car_number),
+    });
+
+    window.location.href = `/check-out?${params.toString()}`;
   }
 
   function csvSafe(value: string | number | null | undefined) {
@@ -463,7 +490,7 @@ export default function CarsPage() {
                 </div>
 
                 <div className="md:text-right">
-                  {(v.status === "Checked Out" || checkout) ? (
+                  {vehicleIsCheckedOut(v) ? (
                     <button
                       type="button"
                       onClick={() => openCheckIn(v)}
@@ -471,8 +498,18 @@ export default function CarsPage() {
                     >
                       Check In
                     </button>
+                  ) : vehicleIsAvailable(v) ? (
+                    <button
+                      type="button"
+                      onClick={() => openCheckOut(v)}
+                      className="w-full rounded bg-[#FFDE00] px-3 py-2 font-semibold text-black hover:bg-yellow-300"
+                    >
+                      Check Out
+                    </button>
                   ) : (
-                    <span className="text-sm text-gray-400">—</span>
+                    <span className="text-sm text-gray-400">
+                      No action
+                    </span>
                   )}
                 </div>
               </div>
