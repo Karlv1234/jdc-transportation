@@ -7,6 +7,12 @@ type Flight = {
   id: string;
   faFlightId: string | null;
   flightNumber: string | null;
+  commonFlightNumber: string | null;
+  commonAirlineCode: string | null;
+  commonAirlineName: string | null;
+  operatingFlightNumber: string | null;
+  operatingAirlineCode: string | null;
+  operatingAirlineName: string | null;
   flightNumberIcao: string | null;
   operatorCode: string | null;
   flightType: string;
@@ -199,6 +205,12 @@ export default function MliFlightBoardPage() {
 
       const searchable = [
         flight.flightNumber,
+        flight.commonFlightNumber,
+        flight.commonAirlineCode,
+        flight.commonAirlineName,
+        flight.operatingFlightNumber,
+        flight.operatingAirlineCode,
+        flight.operatingAirlineName,
         flight.flightNumberIcao,
         flight.operatorCode,
         flight.registration,
@@ -430,13 +442,25 @@ export default function MliFlightBoardPage() {
 
                             <div>
                               <div className="font-bold">
-                                {flight.flightNumber || "Private/Unknown"}
+                                {flight.commonFlightNumber ||
+                                  flight.flightNumber ||
+                                  "Private/Unknown"}
                               </div>
                               <div className="text-xs text-gray-500">
                                 {flight.flightType === "General_Aviation"
                                   ? "General aviation"
-                                  : flight.operatorCode || "Airline"}
+                                  : flight.commonAirlineName ||
+                                    flight.commonAirlineCode ||
+                                    "Airline"}
                               </div>
+                              {flight.operatingFlightNumber &&
+                                flight.operatingFlightNumber !==
+                                  flight.commonFlightNumber && (
+                                  <div className="mt-1 text-[11px] text-gray-400">
+                                    Operated as{" "}
+                                    {flight.operatingFlightNumber}
+                                  </div>
+                                )}
                             </div>
 
                             <div>
@@ -545,6 +569,36 @@ export default function MliFlightBoardPage() {
                                 Baggage Claim
                               </div>
                               <div>{flight.baggageClaim || "Unknown"}</div>
+                            </div>
+
+                            <div>
+                              <div className="font-semibold text-gray-500">
+                                Common Airline
+                              </div>
+                              <div>
+                                {flight.commonAirlineName ||
+                                  flight.commonAirlineCode ||
+                                  "Unknown"}
+                              </div>
+                            </div>
+
+                            <div>
+                              <div className="font-semibold text-gray-500">
+                                Operating Airline
+                              </div>
+                              <div>
+                                {flight.operatingAirlineName ||
+                                  flight.operatingAirlineCode ||
+                                  "Unknown"}
+                                {flight.operatingFlightNumber &&
+                                  flight.operatingFlightNumber !==
+                                    flight.commonFlightNumber && (
+                                    <span>
+                                      {" "}
+                                      ({flight.operatingFlightNumber})
+                                    </span>
+                                  )}
+                              </div>
                             </div>
 
                             <div>

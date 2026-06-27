@@ -93,15 +93,131 @@ function getEstimatedArrivalTime(flight: FlightAwareFlight) {
   );
 }
 
-function getFlightNumber(flight: FlightAwareFlight) {
-  return firstNonEmpty(
-    flight.ident_iata,
-    flight.operator_iata && flight.flight_number
-      ? `${flight.operator_iata}${flight.flight_number}`
-      : null,
-    flight.ident,
-    flight.registration
+const COMMON_AIRLINES: Record<string, string> = {
+  AA: "American",
+  DL: "Delta",
+  G4: "Allegiant",
+  UA: "United",
+};
+
+const REGIONAL_OPERATORS: Record<string, string> = {
+  "9E": "Endeavor Air",
+  G7: "GoJet Airlines",
+  MQ: "Envoy Air",
+  OH: "PSA Airlines",
+  OO: "SkyWest Airlines",
+  YX: "Republic Airways",
+  ZW: "Air Wisconsin",
+};
+
+const COMMON_AIRLINE_PRIORITY = ["UA", "AA", "DL", "G4"];
+
+function normalizeFlightNumber(value: string | null | undefined) {
+  return value?.replace(/\s+/g, "").toUpperCase() || null;
+}
+
+function getFlightPrefix(value: string | null | undefined) {
+  const normalized = normalizeFlightNumber(value);
+  const match = normalized?.match(/^([A-Z0-9]{2})/);
+  return match?.[1] || null;
+}
+
+function getOperatingFlightNumber(flight: FlightAwareFlight) {
+  return normalizeFlightNumber(
+    firstNonEmpty(
+      flight.ident_iata,
+      flight.operator_iata && flight.flight_number
+        ? `${flight.operator_iata}${flight.flight_number}`
+        : null,
+      flight.ident
+    )
   );
+}
+
+function getPreferredCodeshare(flight: FlightAwareFlight) {
+  const codeshares = (flight.codeshares_iata || [])
+    .map(normalizeFlightNumber)
+    .filter((value): value is string => Boolean(value));
+
+  for (const airlineCode of COMMON_AIRLINE_PRIORITY) {
+    const match = codeshares.find(
+      (codeshare) => getFlightPrefix(codeshare) === airlineCode
+    );
+
+    if (match) return match;
+  }
+
+  return codeshares[0] || null;
+}
+
+function getRouteBasedMarketingCode(flight: FlightAwareFlight) {
+  if (flight.operator_iata !== "OO") return null;
+
+  const origin = (
+    flight.origin?.code_iata ||
+    flight.origin?.code ||
+    ""
+  ).toUpperCase();
+
+  // Used only when FlightAware does not provide a marketing codeshare.
+  if (["ORD", "DEN"].includes(origin)) return "UA";
+  if (["ATL", "DTW", "MSP"].includes(origin)) return "DL";
+  if (["CLT", "DFW", "PHX"].includes(origin)) return "AA";
+
+  return null;
+}
+
+function getCommonFlightNumber(flight: FlightAwareFlight) {
+  const preferredCodeshare = getPreferredCodeshare(flight);
+
+  if (preferredCodeshare) return preferredCodeshare;
+
+  const operatingFlightNumber = getOperatingFlightNumber(flight);
+  const operatingPrefix = getFlightPrefix(operatingFlightNumber);
+
+  if (operatingPrefix && COMMON_AIRLINES[operatingPrefix]) {
+    return operatingFlightNumber;
+  }
+
+  const routeMarketingCode = getRouteBasedMarketingCode(flight);
+
+  if (routeMarketingCode && flight.flight_number) {
+    return `${routeMarketingCode}${flight.flight_number}`.toUpperCase();
+  }
+
+  return operatingFlightNumber || flight.registration || null;
+}
+
+function getCommonAirlineCode(flight: FlightAwareFlight) {
+  return getFlightPrefix(getCommonFlightNumber(flight));
+}
+
+function getCommonAirlineName(flight: FlightAwareFlight) {
+  const code = getCommonAirlineCode(flight);
+
+  return code ? COMMON_AIRLINES[code] || code : null;
+}
+
+function getOperatingAirlineCode(flight: FlightAwareFlight) {
+  return firstNonEmpty(
+    flight.operator_iata,
+    flight.operator_icao,
+    flight.operator
+  );
+}
+
+function getOperatingAirlineName(flight: FlightAwareFlight) {
+  const code = flight.operator_iata || null;
+
+  if (code && REGIONAL_OPERATORS[code]) {
+    return REGIONAL_OPERATORS[code];
+  }
+
+  if (code && COMMON_AIRLINES[code]) {
+    return COMMON_AIRLINES[code];
+  }
+
+  return firstNonEmpty(flight.operator, flight.operator_icao, code);
 }
 
 function getStatus(flight: FlightAwareFlight) {
@@ -122,7 +238,7 @@ function dedupeFlights(flights: FlightAwareFlight[]) {
       flight.origin?.code_iata ||
       flight.origin?.code ||
       "";
-    const flightNumber = getFlightNumber(flight) || "";
+    const flightNumber = getCommonFlightNumber(flight) || "";
     const key =
       flight.fa_flight_id ||
       `${flightNumber}|${origin}|${arrivalTime}`;
@@ -234,18 +350,23 @@ export async function GET() {
         const scheduledArrival = getScheduledArrivalTime(flight);
         const estimatedArrival = getEstimatedArrivalTime(flight);
 
+        const commonFlightNumber = getCommonFlightNumber(flight);
+        const operatingFlightNumber = getOperatingFlightNumber(flight);
+
         return {
           id:
             flight.fa_flight_id ||
-            `${getFlightNumber(flight) || "unknown"}-${arrivalTime || "unknown"}`,
+            `${commonFlightNumber || operatingFlightNumber || "unknown"}-${arrivalTime || "unknown"}`,
           faFlightId: flight.fa_flight_id || null,
-          flightNumber: getFlightNumber(flight),
+          flightNumber: commonFlightNumber,
+          commonFlightNumber,
+          commonAirlineCode: getCommonAirlineCode(flight),
+          commonAirlineName: getCommonAirlineName(flight),
+          operatingFlightNumber,
+          operatingAirlineCode: getOperatingAirlineCode(flight),
+          operatingAirlineName: getOperatingAirlineName(flight),
           flightNumberIcao: flight.ident_icao || flight.ident || null,
-          operatorCode:
-            flight.operator_iata ||
-            flight.operator_icao ||
-            flight.operator ||
-            null,
+          operatorCode: getOperatingAirlineCode(flight),
           flightType: flight.type || "Unknown",
           registration: flight.registration || null,
           aircraftType: flight.aircraft_type || null,
