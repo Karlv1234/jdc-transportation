@@ -37,6 +37,14 @@ const ARRIVAL_METHODS = [
   "Other",
 ];
 
+const PERSON_TYPES = [
+  "Player",
+  "PGA Staff",
+  "Tournament Staff",
+  "Transportation Staff",
+  "Misc",
+];
+
 function dateToInputValue(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -75,6 +83,13 @@ export default function PlayerArrivalsPage() {
   const [personSearch, setPersonSearch] = useState("");
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
 
+  const [showNewPersonForm, setShowNewPersonForm] = useState(false);
+  const [newPersonFirstName, setNewPersonFirstName] = useState("");
+  const [newPersonLastName, setNewPersonLastName] = useState("");
+  const [newPersonPhone, setNewPersonPhone] = useState("");
+  const [newPersonEmail, setNewPersonEmail] = useState("");
+  const [newPersonType, setNewPersonType] = useState("Player");
+
   const [arrivalMethod, setArrivalMethod] = useState("Commercial Flight");
   const [airline, setAirline] = useState("");
   const [flightNumber, setFlightNumber] = useState("");
@@ -107,7 +122,6 @@ export default function PlayerArrivalsPage() {
     const { data: peopleData, error: peopleError } = await supabase
       .from("people")
       .select("id, first_name, last_name, role")
-      .eq("role", "Player")
       .order("last_name");
 
     if (peopleError) {
@@ -182,30 +196,45 @@ export default function PlayerArrivalsPage() {
     return matchesSearch && matchesMethod;
   });
 
-  async function addNewPlayer() {
+  function openNewPersonForm() {
     const typedName = personSearch.trim();
     const parts = typedName.split(" ").filter(Boolean);
 
-    const suggestedFirst = parts[0] || "";
-    const suggestedLast = parts.slice(1).join(" ") || "";
+    setNewPersonFirstName(parts[0] || "");
+    setNewPersonLastName(parts.slice(1).join(" ") || "");
+    setNewPersonPhone("");
+    setNewPersonEmail("");
+    setNewPersonType("Player");
+    setShowNewPersonForm(true);
+    setSelectedPerson(null);
+  }
 
-    const firstName = prompt("First name?", suggestedFirst);
-    if (!firstName) return;
+  function cancelNewPerson() {
+    setShowNewPersonForm(false);
+    setNewPersonFirstName("");
+    setNewPersonLastName("");
+    setNewPersonPhone("");
+    setNewPersonEmail("");
+    setNewPersonType("Player");
+  }
 
-    const lastName = prompt("Last name?", suggestedLast);
-    if (!lastName) return;
+  async function saveNewPerson() {
+    const firstName = newPersonFirstName.trim();
+    const lastName = newPersonLastName.trim();
 
-    const phone = prompt("Phone? Optional.") || "";
-    const email = prompt("Email? Optional.") || "";
+    if (!firstName || !lastName) {
+      alert("Please enter a first and last name.");
+      return;
+    }
 
     const { data, error } = await supabase
       .from("people")
       .insert({
         first_name: firstName,
         last_name: lastName,
-        phone,
-        email,
-        role: "Player",
+        phone: newPersonPhone.trim(),
+        email: newPersonEmail.trim(),
+        role: newPersonType,
         notes: "",
       })
       .select("id, first_name, last_name, role")
@@ -216,14 +245,21 @@ export default function PlayerArrivalsPage() {
       return;
     }
 
-    setPeople((current) => [...current, data]);
+    setPeople((current) =>
+      [...current, data].sort((a, b) =>
+        `${a.last_name} ${a.first_name}`.localeCompare(
+          `${b.last_name} ${b.first_name}`
+        )
+      )
+    );
     setSelectedPerson(data);
     setPersonSearch(`${data.first_name} ${data.last_name}`);
+    cancelNewPerson();
   }
 
   async function addArrival() {
     if (!selectedPerson) {
-      alert("Please select or add a player.");
+      alert("Please select or add a person.");
       return;
     }
 
@@ -703,14 +739,14 @@ export default function PlayerArrivalsPage() {
           Add Arrival
         </h2>
 
-        <label className="block font-semibold mb-1">Player</label>
+        <label className="block font-semibold mb-1">Person</label>
         <input
           value={personSearch}
           onChange={(e) => {
             setPersonSearch(e.target.value);
             setSelectedPerson(null);
           }}
-          placeholder="Type player name..."
+          placeholder="Type person name..."
           className="border rounded p-3 w-full"
         />
 
@@ -718,13 +754,13 @@ export default function PlayerArrivalsPage() {
           <div className="border rounded mt-2 mb-4 bg-white overflow-hidden">
             {matchingPeople.length === 0 ? (
               <div className="p-3">
-                <p className="text-gray-500 mb-2">No players found.</p>
+                <p className="text-gray-500 mb-2">No people found.</p>
 
                 <button
-                  onClick={addNewPlayer}
+                  onClick={openNewPersonForm}
                   className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-2 rounded w-full"
                 >
-                  Add New Player
+                  Add New Person
                 </button>
               </div>
             ) : (
@@ -734,30 +770,130 @@ export default function PlayerArrivalsPage() {
                     key={person.id}
                     onClick={() => {
                       setSelectedPerson(person);
+                      setShowNewPersonForm(false);
                       setPersonSearch(
                         `${person.first_name} ${person.last_name}`
                       );
                     }}
                     className="block w-full text-left p-3 border-b hover:bg-gray-100"
                   >
-                    {person.first_name} {person.last_name}
+                    <span className="font-semibold">
+                      {person.first_name} {person.last_name}
+                    </span>
+                    <span className="ml-2 text-xs text-gray-500">
+                      {person.role || "No type"}
+                    </span>
                   </button>
                 ))}
 
                 <button
-                  onClick={addNewPlayer}
+                  onClick={openNewPersonForm}
                   className="block w-full text-left p-3 bg-[#FFDE00]/20 text-[#1F4E1A] font-semibold hover:bg-[#FFDE00]/30"
                 >
-                  + Add New Player
+                  + Add New Person
                 </button>
               </>
             )}
           </div>
         )}
 
+        {showNewPersonForm && (
+          <div className="border-2 border-[#367C2B] rounded-lg p-4 my-4 bg-green-50">
+            <h3 className="font-bold text-lg text-[#1F4E1A] mb-3">
+              Add New Person
+            </h3>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="block text-sm font-semibold mb-1">
+                  First Name *
+                </label>
+                <input
+                  value={newPersonFirstName}
+                  onChange={(e) => setNewPersonFirstName(e.target.value)}
+                  className="border rounded p-3 w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">
+                  Last Name *
+                </label>
+                <input
+                  value={newPersonLastName}
+                  onChange={(e) => setNewPersonLastName(e.target.value)}
+                  className="border rounded p-3 w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">
+                  Type of Person *
+                </label>
+                <select
+                  value={newPersonType}
+                  onChange={(e) => setNewPersonType(e.target.value)}
+                  className="border rounded p-3 w-full"
+                >
+                  {PERSON_TYPES.map((personType) => (
+                    <option key={personType} value={personType}>
+                      {personType}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold mb-1">
+                  Phone
+                </label>
+                <input
+                  value={newPersonPhone}
+                  onChange={(e) => setNewPersonPhone(e.target.value)}
+                  type="tel"
+                  className="border rounded p-3 w-full"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold mb-1">
+                  Email
+                </label>
+                <input
+                  value={newPersonEmail}
+                  onChange={(e) => setNewPersonEmail(e.target.value)}
+                  type="email"
+                  className="border rounded p-3 w-full"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={cancelNewPerson}
+                className="bg-gray-200 hover:bg-gray-300 rounded px-4 py-2 font-semibold"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={saveNewPerson}
+                className="bg-[#367C2B] hover:bg-[#2e6e24] text-white rounded px-4 py-2 font-semibold"
+              >
+                Save Person
+              </button>
+            </div>
+          </div>
+        )}
+
         {selectedPerson && (
           <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 my-4">
             Selected: {selectedPerson.first_name} {selectedPerson.last_name}
+            <span className="ml-2 text-sm text-gray-600">
+              ({selectedPerson.role || "No type"})
+            </span>
           </div>
         )}
 
