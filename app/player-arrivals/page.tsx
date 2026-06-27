@@ -98,6 +98,9 @@ export default function PlayerArrivalsPage() {
   const [arrivalDate, setArrivalDate] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
   const [notes, setNotes] = useState("");
+  const [existingArrivalId, setExistingArrivalId] = useState<number | null>(null);
+  const [existingArrivalCount, setExistingArrivalCount] = useState(0);
+  const [savingArrival, setSavingArrival] = useState(false);
 
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
@@ -197,6 +200,51 @@ export default function PlayerArrivalsPage() {
     return matchesSearch && matchesMethod;
   });
 
+  function clearArrivalEntryFields() {
+    setArrivalMethod("Commercial Flight");
+    setAirline("");
+    setFlightNumber("");
+    setFlightOrigin("");
+    setTailNumber("");
+    setArrivalDate("");
+    setArrivalTime("");
+    setNotes("");
+    setExistingArrivalId(null);
+    setExistingArrivalCount(0);
+  }
+
+  function selectPersonForArrival(person: Person) {
+    setSelectedPerson(person);
+    setShowNewPersonForm(false);
+    setPersonSearch(`${person.first_name} ${person.last_name}`);
+
+    const personArrivals = arrivals
+      .filter((arrival) => arrival.person_id === person.id)
+      .sort((a, b) => b.id - a.id);
+
+    const existingArrival = personArrivals[0];
+
+    if (!existingArrival) {
+      clearArrivalEntryFields();
+      return;
+    }
+
+    setExistingArrivalId(existingArrival.id);
+    setExistingArrivalCount(personArrivals.length);
+    setArrivalMethod(existingArrival.arrival_method || "Commercial Flight");
+    setAirline(existingArrival.airline || "");
+    setFlightNumber(existingArrival.flight_number || "");
+    setFlightOrigin(existingArrival.flight_origin || "");
+    setTailNumber(existingArrival.tail_number || "");
+    setArrivalDate(existingArrival.arrival_date || "");
+    setArrivalTime(
+      existingArrival.estimated_arrival_time
+        ? existingArrival.estimated_arrival_time.slice(0, 5)
+        : ""
+    );
+    setNotes(existingArrival.notes || "");
+  }
+
   function openNewPersonForm() {
     const typedName = personSearch.trim();
     const parts = typedName.split(" ").filter(Boolean);
@@ -253,8 +301,7 @@ export default function PlayerArrivalsPage() {
         )
       )
     );
-    setSelectedPerson(data);
-    setPersonSearch(`${data.first_name} ${data.last_name}`);
+    selectPersonForArrival(data);
     cancelNewPerson();
   }
 
@@ -274,75 +321,100 @@ export default function PlayerArrivalsPage() {
       return;
     }
 
-    const isFlight =
-      arrivalMethod === "Commercial Flight" ||
-      arrivalMethod === "Private Aircraft";
+    const isCommercial = arrivalMethod === "Commercial Flight";
+    const isPrivate = arrivalMethod === "Private Aircraft";
+    const isFlight = isCommercial || isPrivate;
 
     const arrivalPayload = {
       person_id: selectedPerson.id,
       player_first_name: selectedPerson.first_name,
       player_last_name: selectedPerson.last_name,
       arrival_method: arrivalMethod,
-      airline: arrivalMethod === "Commercial Flight" ? airline : "",
-      flight_number: arrivalMethod === "Commercial Flight" ? flightNumber : "",
-      flight_origin: isFlight ? flightOrigin : "",
-      tail_number: arrivalMethod === "Private Aircraft" ? tailNumber : "",
+      airline: isFlight ? airline.trim() || null : null,
+      flight_number: isCommercial ? flightNumber.trim() || null : null,
+      flight_origin: flightOrigin.trim() || null,
+      tail_number: isPrivate ? tailNumber.trim() || null : null,
       arrival_date: arrivalDate,
-      estimated_arrival_time: arrivalTime,
-      notes,
+      estimated_arrival_time: arrivalTime || null,
+      notes: notes.trim() || null,
     };
+
+    setSavingArrival(true);
 
     const { data: existingArrivals, error: findError } = await supabase
       .from("player_arrivals")
       .select("id")
       .eq("person_id", selectedPerson.id)
-      .order("id", { ascending: true })
-      .limit(1);
+      .order("id", { ascending: false });
 
     if (findError) {
+      setSavingArrival(false);
       alert(findError.message);
       return;
     }
 
-    const existingArrival = existingArrivals?.[0];
+    const existingIds = (existingArrivals || []).map((arrival) => arrival.id);
+    const targetId =
+      existingArrivalId && existingIds.includes(existingArrivalId)
+        ? existingArrivalId
+        : existingIds[0] || null;
 
-    if (existingArrival) {
-      const { error } = await supabase
+    if (targetId) {
+      const { error: updateError } = await supabase
         .from("player_arrivals")
         .update(arrivalPayload)
-        .eq("id", existingArrival.id);
+        .eq("id", targetId);
 
-      if (error) {
-        alert(error.message);
+      if (updateError) {
+        setSavingArrival(false);
+        alert(updateError.message);
         return;
       }
 
-      alert("Existing arrival updated.");
+      const duplicateIds = existingIds.filter((id) => id !== targetId);
+
+      if (duplicateIds.length > 0) {
+        const { error: deleteDuplicateError } = await supabase
+          .from("player_arrivals")
+          .delete()
+          .in("id", duplicateIds);
+
+        if (deleteDuplicateError) {
+          setSavingArrival(false);
+          alert(
+            `The arrival was updated, but duplicate rows could not be removed: ${deleteDuplicateError.message}`
+          );
+          await loadData();
+          return;
+        }
+      }
+
+      alert(
+        duplicateIds.length > 0
+          ? `Existing arrival updated and ${duplicateIds.length} duplicate record${
+              duplicateIds.length === 1 ? "" : "s"
+            } removed.`
+          : "Existing arrival updated."
+      );
     } else {
-      const { error } = await supabase
+      const { error: insertError } = await supabase
         .from("player_arrivals")
         .insert(arrivalPayload);
 
-      if (error) {
-        alert(error.message);
+      if (insertError) {
+        setSavingArrival(false);
+        alert(insertError.message);
         return;
       }
 
       alert("Arrival added.");
     }
 
+    setSavingArrival(false);
     setPersonSearch("");
     setSelectedPerson(null);
-    setArrivalMethod("Commercial Flight");
-    setAirline("");
-    setFlightNumber("");
-    setFlightOrigin("");
-    setTailNumber("");
-    setArrivalDate("");
-    setArrivalTime("");
-    setNotes("");
-
-    loadData();
+    clearArrivalEntryFields();
+    await loadData();
   }
 
   function beginEditArrival(arrival: Arrival) {
@@ -587,15 +659,25 @@ export default function PlayerArrivalsPage() {
 
   return (
     <main className="min-h-screen bg-[#F5F5F5] p-4">
-      <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-bold">Player Arrivals</h1>
 
-        <button
-          onClick={loadData}
-          className="bg-[#1F4E1A] text-white px-4 py-2 rounded"
-        >
-          Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/player-arrivals/flights"
+            className="rounded bg-[#FFDE00] px-4 py-2 font-bold text-[#1F4E1A] hover:bg-yellow-300"
+          >
+            MLI 48-Hour Flights
+          </Link>
+
+          <button
+            type="button"
+            onClick={loadData}
+            className="rounded bg-[#1F4E1A] px-4 py-2 text-white"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       <section className="bg-white rounded-lg shadow p-4 mb-4 border-t-4 border-[#367C2B] max-w-3xl">
@@ -609,6 +691,7 @@ export default function PlayerArrivalsPage() {
           onChange={(e) => {
             setPersonSearch(e.target.value);
             setSelectedPerson(null);
+            clearArrivalEntryFields();
           }}
           placeholder="Type person name..."
           className="border rounded p-3 w-full"
@@ -632,13 +715,7 @@ export default function PlayerArrivalsPage() {
                 {matchingPeople.map((person) => (
                   <button
                     key={person.id}
-                    onClick={() => {
-                      setSelectedPerson(person);
-                      setShowNewPersonForm(false);
-                      setPersonSearch(
-                        `${person.first_name} ${person.last_name}`
-                      );
-                    }}
+                    onClick={() => selectPersonForArrival(person)}
                     className="block w-full text-left p-3 border-b hover:bg-gray-100"
                   >
                     <span className="font-semibold">
@@ -754,10 +831,26 @@ export default function PlayerArrivalsPage() {
 
         {selectedPerson && (
           <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 my-4">
-            Selected: {selectedPerson.first_name} {selectedPerson.last_name}
-            <span className="ml-2 text-sm text-gray-600">
-              ({selectedPerson.role || "No type"})
-            </span>
+            <div>
+              Selected: {selectedPerson.first_name} {selectedPerson.last_name}
+              <span className="ml-2 text-sm text-gray-600">
+                ({selectedPerson.role || "No type"})
+              </span>
+            </div>
+
+            {existingArrivalId !== null && (
+              <div className="mt-2 rounded border border-[#367C2B] bg-green-50 p-2 text-sm text-[#1F4E1A]">
+                This person already has an arrival. The existing information has
+                been loaded into the form, and saving will update that record
+                instead of creating another one.
+                {existingArrivalCount > 1 && (
+                  <span className="mt-1 block font-semibold text-red-700">
+                    {existingArrivalCount} arrival records were found. Saving
+                    will keep one updated record and remove the duplicates.
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -865,10 +958,16 @@ export default function PlayerArrivalsPage() {
         />
 
         <button
+          type="button"
           onClick={addArrival}
-          className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded w-full font-semibold"
+          disabled={savingArrival}
+          className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded w-full font-semibold disabled:cursor-not-allowed disabled:opacity-60"
         >
-          Add / Update Arrival
+          {savingArrival
+            ? "Saving..."
+            : existingArrivalId !== null
+              ? "Update Existing Arrival"
+              : "Add Arrival"}
         </button>
       </section>
 
