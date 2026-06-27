@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { supabase } from "../../src/lib/supabase";
+
+const ROLE_OPTIONS = [
+  "Player",
+  "PGA Staff",
+  "Tournament Staff",
+  "Transportation Staff",
+  "Misc",
+];
 
 type Person = {
   id: number;
@@ -13,137 +21,430 @@ type Person = {
   notes: string | null;
 };
 
-type Checkout = {
-  id: number;
+type OpenCheckout = {
   person_id: number | null;
   car_number: number | null;
-  time_out: string | null;
-  status: string | null;
 };
+
+const EMPTY_FORM = {
+  firstName: "",
+  lastName: "",
+  phone: "",
+  email: "",
+  role: "Player",
+  notes: "",
+};
+
+function RequiredAsterisk() {
+  return <span className="ml-1 font-bold text-red-600">*</span>;
+}
 
 export default function PeoplePage() {
   const [people, setPeople] = useState<Person[]>([]);
-  const [checkouts, setCheckouts] = useState<Checkout[]>([]);
+  const [openCheckouts, setOpenCheckouts] = useState<OpenCheckout[]>([]);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   async function loadData() {
-    const { data: peopleData, error: peopleError } = await supabase
-      .from("people")
-      .select("id, first_name, last_name, phone, email, role, notes")
-      .order("last_name");
+    setLoading(true);
 
-    if (peopleError) {
-      alert(peopleError.message);
-      return;
+    const [peopleResult, checkoutResult] = await Promise.all([
+      supabase
+        .from("people")
+        .select("id, first_name, last_name, phone, email, role, notes")
+        .order("last_name", { ascending: true })
+        .order("first_name", { ascending: true }),
+
+      supabase
+        .from("checkouts")
+        .select("person_id, car_number")
+        .is("time_in", null),
+    ]);
+
+    if (peopleResult.error) {
+      alert(peopleResult.error.message);
+    } else {
+      setPeople(peopleResult.data || []);
     }
 
-    const { data: checkoutData, error: checkoutError } = await supabase
-      .from("checkouts")
-      .select("id, person_id, car_number, time_out, status")
-      .is("time_in", null);
-
-    if (checkoutError) {
-      alert(checkoutError.message);
-      return;
+    if (checkoutResult.error) {
+      alert(checkoutResult.error.message);
+    } else {
+      setOpenCheckouts(checkoutResult.data || []);
     }
 
-    setPeople(peopleData || []);
-    setCheckouts(checkoutData || []);
+    setLoading(false);
   }
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const filteredPeople = people.filter((p) => {
-    const text = `${p.first_name} ${p.last_name} ${p.phone} ${p.email} ${p.role} ${p.notes}`.toLowerCase();
-    return text.includes(search.toLowerCase());
-  });
+  const checkedOutCarsByPerson = useMemo(() => {
+    const map = new Map<number, number[]>();
 
-  async function updateNotes(personId: number, notes: string) {
-    const { error } = await supabase
-      .from("people")
-      .update({ notes })
-      .eq("id", personId);
+    for (const checkout of openCheckouts) {
+      if (checkout.person_id === null || checkout.car_number === null) continue;
+
+      const cars = map.get(checkout.person_id) || [];
+      cars.push(checkout.car_number);
+      map.set(checkout.person_id, cars);
+    }
+
+    return map;
+  }, [openCheckouts]);
+
+  const filteredPeople = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    return people.filter((person) => {
+      const searchableText = [
+        person.first_name,
+        person.last_name,
+        person.phone,
+        person.email,
+        person.role,
+        person.notes,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch =
+        !normalizedSearch || searchableText.includes(normalizedSearch);
+
+      const matchesRole = !roleFilter || person.role === roleFilter;
+
+      return matchesSearch && matchesRole;
+    });
+  }, [people, search, roleFilter]);
+
+  function updateForm(
+    field: keyof typeof EMPTY_FORM,
+    value: string
+  ) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function closeAddForm() {
+    setShowAddForm(false);
+    setForm(EMPTY_FORM);
+  }
+
+  async function addPerson(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const firstName = form.firstName.trim();
+    const lastName = form.lastName.trim();
+
+    if (!firstName || !lastName) {
+      alert("Please enter a first and last name.");
+      return;
+    }
+
+    const existingPerson = people.find(
+      (person) =>
+        person.first_name.trim().toLowerCase() === firstName.toLowerCase() &&
+        person.last_name.trim().toLowerCase() === lastName.toLowerCase()
+    );
+
+    if (existingPerson) {
+      const continueAdding = window.confirm(
+        `${existingPerson.first_name} ${existingPerson.last_name} already exists. Add another record anyway?`
+      );
+
+      if (!continueAdding) return;
+    }
+
+    setSaving(true);
+
+    const { error } = await supabase.from("people").insert({
+      first_name: firstName,
+      last_name: lastName,
+      phone: form.phone.trim() || null,
+      email: form.email.trim() || null,
+      role: form.role,
+      notes: form.notes.trim() || null,
+    });
+
+    setSaving(false);
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    setPeople((current) =>
-      current.map((p) => (p.id === personId ? { ...p, notes } : p))
-    );
+    closeAddForm();
+    await loadData();
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 p-4">
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <h1 className="text-3xl font-bold">People</h1>
+    <main className="mx-auto max-w-6xl p-4 md:p-6">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-[#1F4E1A]">People</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            {people.length} total people
+          </p>
+        </div>
 
-        <button
-          onClick={loadData}
-          className="bg-black text-white px-4 py-2 rounded"
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={loadData}
+            className="rounded border border-gray-300 bg-white px-4 py-2 font-semibold hover:bg-gray-100"
+          >
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowAddForm((current) => !current)}
+            className="rounded bg-[#367C2B] px-4 py-2 font-semibold text-white hover:bg-[#2e6e24]"
+          >
+            {showAddForm ? "Close Add Person" : "Add Person"}
+          </button>
+        </div>
+      </div>
+
+      {showAddForm && (
+        <form
+          onSubmit={addPerson}
+          className="mb-6 rounded-lg border-2 border-[#367C2B] bg-green-50 p-4 md:p-5"
         >
-          Refresh
-        </button>
-      </div>
+          <h2 className="mb-4 text-xl font-bold text-[#1F4E1A]">
+            Add Person
+          </h2>
 
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by name, role, phone, email..."
-        className="border rounded p-3 w-full mb-4"
-      />
-
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {filteredPeople.map((person) => {
-          const checkout = checkouts.find((c) => c.person_id === person.id);
-
-          return (
-            <div key={person.id} className="p-4 border-b grid gap-3">
-              <div>
-                <p className="font-bold text-lg">
-                  {person.last_name}, {person.first_name}
-                </p>
-
-                <p className="text-sm text-gray-800">
-                  {person.role || "Misc"}
-                  {person.phone ? ` — ${person.phone}` : ""}
-                  {person.email ? ` — ${person.email}` : ""}
-                </p>
-
-                {checkout ? (
-                  <p className="text-sm font-semibold text-red-700 mt-1">
-                    Checked out: Car #{checkout.car_number}
-                  </p>
-                ) : (
-                  <p className="text-sm font-semibold text-green-700 mt-1">
-                    No car checked out
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 mb-1">
-                  Notes
-                </label>
-
-                <textarea
-                  defaultValue={person.notes || ""}
-                  onBlur={(e) => updateNotes(person.id, e.target.value)}
-                  placeholder="Add notes..."
-                  className="border rounded p-2 w-full"
-                />
-              </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block font-semibold">
+                First Name
+                <RequiredAsterisk />
+              </label>
+              <input
+                value={form.firstName}
+                onChange={(event) =>
+                  updateForm("firstName", event.target.value)
+                }
+                className="w-full rounded border p-3"
+                autoComplete="given-name"
+                required
+              />
             </div>
-          );
-        })}
 
-        {filteredPeople.length === 0 && (
-          <div className="p-4 text-gray-500">No people found.</div>
-        )}
+            <div>
+              <label className="mb-1 block font-semibold">
+                Last Name
+                <RequiredAsterisk />
+              </label>
+              <input
+                value={form.lastName}
+                onChange={(event) =>
+                  updateForm("lastName", event.target.value)
+                }
+                className="w-full rounded border p-3"
+                autoComplete="family-name"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block font-semibold">
+                Type of Person
+                <RequiredAsterisk />
+              </label>
+              <select
+                value={form.role}
+                onChange={(event) => updateForm("role", event.target.value)}
+                className="w-full rounded border bg-white p-3"
+                required
+              >
+                {ROLE_OPTIONS.map((role) => (
+                  <option key={role} value={role}>
+                    {role}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block font-semibold">Phone</label>
+              <input
+                value={form.phone}
+                onChange={(event) => updateForm("phone", event.target.value)}
+                type="tel"
+                className="w-full rounded border p-3"
+                autoComplete="tel"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="mb-1 block font-semibold">Email</label>
+              <input
+                value={form.email}
+                onChange={(event) => updateForm("email", event.target.value)}
+                type="email"
+                className="w-full rounded border p-3"
+                autoComplete="email"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="mb-1 block font-semibold">Notes</label>
+              <textarea
+                value={form.notes}
+                onChange={(event) => updateForm("notes", event.target.value)}
+                rows={3}
+                className="w-full rounded border p-3"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={closeAddForm}
+              className="rounded bg-gray-200 px-4 py-2 font-semibold hover:bg-gray-300"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded bg-[#367C2B] px-4 py-2 font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Save Person"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      <section className="mb-5 grid gap-3 md:grid-cols-[1fr_240px]">
+        <div>
+          <label className="mb-1 block text-sm font-semibold">
+            Search People
+          </label>
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search name, phone, email, type, or notes..."
+            className="w-full rounded border p-3"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-semibold">
+            Type of Person
+          </label>
+          <select
+            value={roleFilter}
+            onChange={(event) => setRoleFilter(event.target.value)}
+            className="w-full rounded border bg-white p-3"
+          >
+            <option value="">All types</option>
+            {ROLE_OPTIONS.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
+
+      <div className="mb-3 text-sm text-gray-600">
+        Showing {filteredPeople.length} of {people.length}
       </div>
+
+      {loading ? (
+        <div className="rounded border bg-white p-6 text-center text-gray-500">
+          Loading people...
+        </div>
+      ) : filteredPeople.length === 0 ? (
+        <div className="rounded border bg-white p-6 text-center text-gray-500">
+          No people found.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border bg-white">
+          <div className="hidden grid-cols-[1.3fr_1fr_1fr_1fr_1fr] gap-3 bg-gray-100 px-4 py-3 text-sm font-bold md:grid">
+            <div>Name</div>
+            <div>Type</div>
+            <div>Phone</div>
+            <div>Email</div>
+            <div>Car Status</div>
+          </div>
+
+          {filteredPeople.map((person) => {
+            const checkedOutCars =
+              checkedOutCarsByPerson.get(person.id) || [];
+
+            return (
+              <div
+                key={person.id}
+                className="border-t px-4 py-4 first:border-t-0"
+              >
+                <div className="grid gap-2 md:grid-cols-[1.3fr_1fr_1fr_1fr_1fr] md:gap-3">
+                  <div>
+                    <div className="font-bold text-[#1F4E1A]">
+                      {person.first_name} {person.last_name}
+                    </div>
+                    {person.notes && (
+                      <div className="mt-1 text-sm text-gray-600">
+                        {person.notes}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <span className="mr-2 text-xs font-semibold text-gray-500 md:hidden">
+                      Type:
+                    </span>
+                    {person.role || "—"}
+                  </div>
+
+                  <div>
+                    <span className="mr-2 text-xs font-semibold text-gray-500 md:hidden">
+                      Phone:
+                    </span>
+                    {person.phone || "—"}
+                  </div>
+
+                  <div className="break-all">
+                    <span className="mr-2 text-xs font-semibold text-gray-500 md:hidden">
+                      Email:
+                    </span>
+                    {person.email || "—"}
+                  </div>
+
+                  <div>
+                    <span className="mr-2 text-xs font-semibold text-gray-500 md:hidden">
+                      Car:
+                    </span>
+
+                    {checkedOutCars.length > 0 ? (
+                      <span className="font-semibold text-red-700">
+                        {checkedOutCars
+                          .map((carNumber) => `#${carNumber}`)
+                          .join(", ")} checked out
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">No car checked out</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </main>
   );
 }
