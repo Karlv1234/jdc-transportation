@@ -70,6 +70,7 @@ export default function CheckOutPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [location, setLocation] = useState("");
+  const [vehicleSearch, setVehicleSearch] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [personSearch, setPersonSearch] = useState("");
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
@@ -165,6 +166,27 @@ export default function CheckOutPage() {
     )
   ).sort();
 
+  const normalizedVehicleSearch = vehicleSearch.trim();
+
+  const matchingVehicles = availableVehicles
+    .filter((vehicle) =>
+      String(vehicle.car_number).includes(normalizedVehicleSearch)
+    )
+    .sort((a, b) => {
+      const aExact =
+        String(a.car_number) === normalizedVehicleSearch ? 0 : 1;
+      const bExact =
+        String(b.car_number) === normalizedVehicleSearch ? 0 : 1;
+
+      return aExact - bExact || a.car_number - b.car_number;
+    })
+    .slice(0, 8);
+
+  function chooseVehicle(vehicle: Vehicle) {
+    setSelectedVehicle(vehicle);
+    setVehicleSearch(String(vehicle.car_number));
+  }
+
   const matchingPeople = people
     .filter((p) => {
       const text =
@@ -243,6 +265,7 @@ export default function CheckOutPage() {
     alert(`Car #${selectedVehicle.car_number} checked out.`);
 
     setLocation("");
+    setVehicleSearch("");
     setSelectedVehicle(null);
     setPersonSearch("");
     setSelectedPerson(null);
@@ -266,6 +289,7 @@ export default function CheckOutPage() {
           value={location}
           onChange={(e) => {
             setLocation(e.target.value);
+            setVehicleSearch("");
             setSelectedVehicle(null);
           }}
           className="border rounded p-3 w-full mb-4"
@@ -279,34 +303,115 @@ export default function CheckOutPage() {
         </select>
 
         <label className="block font-semibold mb-1">
-          Available Car
+          Car Number
           <RequiredAsterisk />
         </label>
-        <select
-          value={selectedVehicle?.id || ""}
+
+        <input
+          value={vehicleSearch}
           onChange={(e) => {
-            const vehicle = availableVehicles.find(
-              (v) => v.id === Number(e.target.value)
+            const nextValue = e.target.value.replace(/[^0-9]/g, "");
+            setVehicleSearch(nextValue);
+
+            const exactVehicle = availableVehicles.find(
+              (vehicle) => String(vehicle.car_number) === nextValue
             );
-            setSelectedVehicle(vehicle || null);
+
+            setSelectedVehicle(exactVehicle || null);
           }}
-          className="border rounded p-3 w-full mb-4"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="Type the car number..."
+          className="border rounded p-3 w-full"
           required
-        >
-          <option value="">Select a car...</option>
-          {availableVehicles.map((v) => (
-            <option key={v.id} value={v.id}>
-              Car #{v.car_number} — {v.model || ""} — {v.type || ""} —{" "}
-              {v.color || ""}
-            </option>
-          ))}
-        </select>
+        />
+
+        {!selectedVehicle && normalizedVehicleSearch && (
+          <div className="border rounded mt-2 mb-4 bg-white overflow-hidden">
+            {matchingVehicles.length === 0 ? (
+              <div className="p-3 text-gray-500">
+                No available car #{normalizedVehicleSearch}
+                {location ? ` at ${location}` : ""}.
+              </div>
+            ) : (
+              matchingVehicles.map((vehicle) => (
+                <button
+                  key={vehicle.id}
+                  type="button"
+                  onClick={() => chooseVehicle(vehicle)}
+                  className="block w-full text-left p-3 border-b last:border-b-0 hover:bg-gray-100"
+                >
+                  <div className="font-semibold">
+                    Car #{vehicle.car_number}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {vehicle.model || "Unknown model"}
+                    {vehicle.type ? ` — ${vehicle.type}` : ""}
+                    {vehicle.color ? ` — ${vehicle.color}` : ""}
+                    {vehicle.current_location
+                      ? ` — ${vehicle.current_location}`
+                      : ""}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+
+        <details className="mb-4 mt-2">
+          <summary className="cursor-pointer text-sm font-semibold text-[#1F4E1A]">
+            Browse all available cars
+          </summary>
+
+          <select
+            value={selectedVehicle?.id || ""}
+            onChange={(e) => {
+              const vehicle = availableVehicles.find(
+                (item) => item.id === Number(e.target.value)
+              );
+
+              if (vehicle) {
+                chooseVehicle(vehicle);
+              } else {
+                setSelectedVehicle(null);
+                setVehicleSearch("");
+              }
+            }}
+            className="border rounded p-3 w-full mt-2"
+          >
+            <option value="">Select a car...</option>
+            {availableVehicles.map((vehicle) => (
+              <option key={vehicle.id} value={vehicle.id}>
+                Car #{vehicle.car_number} — {vehicle.model || ""} —{" "}
+                {vehicle.type || ""} — {vehicle.color || ""}
+              </option>
+            ))}
+          </select>
+        </details>
 
         {selectedVehicle && (
-          <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 mb-4">
-            Selected: Car #{selectedVehicle.car_number} —{" "}
-            {selectedVehicle.model || ""} — {selectedVehicle.type || ""} —{" "}
-            {selectedVehicle.color || ""}
+          <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div>
+                Selected: Car #{selectedVehicle.car_number} —{" "}
+                {selectedVehicle.model || ""} — {selectedVehicle.type || ""} —{" "}
+                {selectedVehicle.color || ""}
+              </div>
+              <div className="text-sm text-gray-600 mt-1">
+                {selectedVehicle.current_location || "Unknown location"}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setVehicleSearch("");
+                setSelectedVehicle(null);
+              }}
+              className="text-sm font-semibold text-red-700 hover:underline"
+            >
+              Clear
+            </button>
           </div>
         )}
 
