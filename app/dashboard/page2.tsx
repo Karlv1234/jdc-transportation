@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../src/lib/supabase";
+import { supabase } from "../../src/lib/supabase";
 
 type Vehicle = {
   id: number;
@@ -97,24 +97,6 @@ export default function DashboardPage() {
     if (status === "Available") return "bg-[#367C2B] text-white";
     if (status === "Hold") return "bg-gray-300 text-black";
     return "bg-gray-200 text-black";
-  }
-
-  function openCheckIn(vehicle: Vehicle) {
-    const params = new URLSearchParams({
-      vehicleId: String(vehicle.id),
-      carNumber: String(vehicle.car_number),
-    });
-
-    window.location.href = `/check-in?${params.toString()}`;
-  }
-
-  function openCheckOut(vehicle: Vehicle) {
-    const params = new URLSearchParams({
-      vehicleId: String(vehicle.id),
-      carNumber: String(vehicle.car_number),
-    });
-
-    window.location.href = `/check-out?${params.toString()}`;
   }
 
   return (
@@ -249,33 +231,13 @@ export default function DashboardPage() {
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        <span
-                          className={`rounded px-3 py-1 text-sm font-semibold ${getStatusBadge(
-                            vehicle.status
-                          )}`}
-                        >
-                          {vehicle.status || "Unknown"}
-                        </span>
-
-                        {vehicle.status === "Checked Out" ? (
-                          <button
-                            type="button"
-                            onClick={() => openCheckIn(vehicle)}
-                            className="rounded bg-[#367C2B] px-3 py-2 text-sm font-semibold text-white hover:bg-[#2e6e24]"
-                          >
-                            Check In
-                          </button>
-                        ) : vehicle.status === "Available" ? (
-                          <button
-                            type="button"
-                            onClick={() => openCheckOut(vehicle)}
-                            className="rounded bg-[#FFDE00] px-3 py-2 text-sm font-semibold text-black hover:bg-yellow-300"
-                          >
-                            Check Out
-                          </button>
-                        ) : null}
-                      </div>
+                      <span
+                        className={`rounded px-3 py-1 text-sm font-semibold ${getStatusBadge(
+                          vehicle.status
+                        )}`}
+                      >
+                        {vehicle.status || "Unknown"}
+                      </span>
                     </div>
                   </div>
                 );
@@ -323,28 +285,6 @@ export default function DashboardPage() {
                     {new Date(c.time_out).toLocaleString()}
                   </p>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const vehicle =
-                      vehicles.find((item) => item.id === c.vehicle_id) ||
-                      vehicles.find(
-                        (item) => item.car_number === c.car_number
-                      );
-
-                    if (vehicle) {
-                      openCheckIn(vehicle);
-                    } else if (c.car_number !== null) {
-                      window.location.href = `/check-in?carNumber=${encodeURIComponent(
-                        String(c.car_number)
-                      )}`;
-                    }
-                  }}
-                  className="mt-3 w-full rounded bg-[#367C2B] px-3 py-2 text-sm font-semibold text-white hover:bg-[#2e6e24]"
-                >
-                  Check In Car
-                </button>
               </div>
             ))}
           </div>
