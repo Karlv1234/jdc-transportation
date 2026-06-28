@@ -38,7 +38,7 @@ const LOCATION_OPTIONS = [
   "Elliott",
 ];
 
-const STATUS_OPTIONS = ["Available", "Checked Out", "Hold"];
+const STATUS_OPTIONS = ["Available", "Checked Out", "Hold", "Evac", "Shuttle"];
 
 function RequiredAsterisk() {
   return <span className="text-red-600 font-bold ml-1">*</span>;
@@ -194,6 +194,8 @@ export default function CarsPage() {
   function getStatusBadge(status: string | null) {
     if (status === "Checked Out") return "bg-[#FFDE00] text-black";
     if (status === "Available") return "bg-[#367C2B] text-white";
+    if (status === "Evac") return "bg-red-700 text-white";
+    if (status === "Shuttle") return "bg-blue-700 text-white";
     return "bg-gray-300 text-black";
   }
 

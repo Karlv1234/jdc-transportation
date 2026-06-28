@@ -72,6 +72,8 @@ export default function DashboardPage() {
   const availableVehicles = vehicles.filter((v) => v.status === "Available");
   const checkedOutVehicles = vehicles.filter((v) => v.status === "Checked Out");
   const holdVehicles = vehicles.filter((v) => v.status === "Hold");
+  const evacVehicles = vehicles.filter((v) => v.status === "Evac");
+  const shuttleVehicles = vehicles.filter((v) => v.status === "Shuttle");
 
   const locations = Array.from(
     new Set(vehicles.map((v) => v.current_location || "Unknown"))
@@ -113,6 +115,8 @@ export default function DashboardPage() {
   function getStatusBadge(status: string | null) {
     if (status === "Checked Out") return "bg-[#FFDE00] text-black";
     if (status === "Available") return "bg-[#367C2B] text-white";
+    if (status === "Evac") return "bg-red-700 text-white";
+    if (status === "Shuttle") return "bg-blue-700 text-white";
     if (status === "Hold") return "bg-gray-300 text-black";
     return "bg-gray-200 text-black";
   }
@@ -177,7 +181,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
         <button
           onClick={() => showList("All Cars", vehicles)}
           className="bg-white rounded-lg shadow p-4 text-left hover:ring-2 hover:ring-[#367C2B]"
@@ -213,6 +217,26 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500">Hold</p>
           <p className="text-3xl font-bold text-gray-600">
             {holdVehicles.length}
+          </p>
+        </button>
+
+        <button
+          onClick={() => showList("Evac Cars", evacVehicles)}
+          className="bg-white rounded-lg shadow p-4 text-left hover:ring-2 hover:ring-red-600"
+        >
+          <p className="text-sm text-gray-500">Evac</p>
+          <p className="text-3xl font-bold text-red-700">
+            {evacVehicles.length}
+          </p>
+        </button>
+
+        <button
+          onClick={() => showList("Shuttle Cars", shuttleVehicles)}
+          className="bg-white rounded-lg shadow p-4 text-left hover:ring-2 hover:ring-blue-600"
+        >
+          <p className="text-sm text-gray-500">Shuttle</p>
+          <p className="text-3xl font-bold text-blue-700">
+            {shuttleVehicles.length}
           </p>
         </button>
       </div>
