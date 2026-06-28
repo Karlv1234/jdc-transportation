@@ -29,6 +29,7 @@ type Person = {
   phone: string | null;
   email: string | null;
   role: string | null;
+  notes?: string | null;
 };
 
 type ArrivalPrefill = {
@@ -74,6 +75,15 @@ export default function CheckOutPage() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [personSearch, setPersonSearch] = useState("");
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  const [personComboOpen, setPersonComboOpen] = useState(false);
+  const [showNewPersonForm, setShowNewPersonForm] = useState(false);
+  const [newPersonFirstName, setNewPersonFirstName] = useState("");
+  const [newPersonLastName, setNewPersonLastName] = useState("");
+  const [newPersonPhone, setNewPersonPhone] = useState("");
+  const [newPersonEmail, setNewPersonEmail] = useState("");
+  const [newPersonRole, setNewPersonRole] = useState("Player");
+  const [newPersonNotes, setNewPersonNotes] = useState("");
+  const [savingNewPerson, setSavingNewPerson] = useState(false);
   const [onBehalfOf, setOnBehalfOf] = useState("");
   const [checkedOutBy, setCheckedOutBy] = useState("");
   const [notes, setNotes] = useState("");
@@ -87,7 +97,7 @@ export default function CheckOutPage() {
 
     const { data: peopleData } = await supabase
       .from("people")
-      .select("id, first_name, last_name, phone, email, role")
+      .select("id, first_name, last_name, phone, email, role, notes")
       .order("last_name");
 
     setVehicles(vehicleData || []);
@@ -232,43 +242,126 @@ export default function CheckOutPage() {
     setVehicleSearch(String(vehicle.car_number));
   }
 
+  const normalizedPersonSearch = personSearch.trim().toLowerCase();
+
   const matchingPeople = people
-    .filter((p) => {
-      const text =
-        `${p.first_name} ${p.last_name} ${p.phone} ${p.email} ${p.role}`.toLowerCase();
-      return text.includes(personSearch.toLowerCase());
+    .filter((person) => {
+      if (!normalizedPersonSearch) return true;
+
+      const searchable = [
+        person.first_name,
+        person.last_name,
+        `${person.first_name} ${person.last_name}`,
+        person.phone,
+        person.email,
+        person.role,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(normalizedPersonSearch);
     })
+    .sort((a, b) =>
+      `${a.last_name} ${a.first_name}`.localeCompare(
+        `${b.last_name} ${b.first_name}`
+      )
+    )
     .slice(0, 8);
 
-  async function addNewPerson() {
-    const firstName = prompt("First name?");
-    if (!firstName) return;
+  function choosePerson(person: Person) {
+    setSelectedPerson(person);
+    setPersonSearch(`${person.first_name} ${person.last_name}`);
+    setPersonComboOpen(false);
+    setShowNewPersonForm(false);
+  }
 
-    const lastName = prompt("Last name?");
-    if (!lastName) return;
+  function openNewPersonForm() {
+    const parts = personSearch.trim().split(/\s+/).filter(Boolean);
 
-    const phone = prompt("Phone?") || "";
-    const email = prompt("Email?") || "";
+    if (parts.length > 0 && !newPersonFirstName) {
+      setNewPersonFirstName(parts[0]);
+    }
 
-    const roleInput =
-      prompt(`Role? Choose one:\n${ROLE_OPTIONS.join("\n")}`) || "Misc";
+    if (parts.length > 1 && !newPersonLastName) {
+      setNewPersonLastName(parts.slice(1).join(" "));
+    }
 
-    const role = ROLE_OPTIONS.includes(roleInput) ? roleInput : "Misc";
+    setSelectedPerson(null);
+    setPersonComboOpen(false);
+    setShowNewPersonForm(true);
+  }
+
+  function cancelNewPerson() {
+    setShowNewPersonForm(false);
+    setNewPersonFirstName("");
+    setNewPersonLastName("");
+    setNewPersonPhone("");
+    setNewPersonEmail("");
+    setNewPersonRole("Player");
+    setNewPersonNotes("");
+  }
+
+  async function saveNewPerson() {
+    const firstName = newPersonFirstName.trim();
+    const lastName = newPersonLastName.trim();
+
+    if (!firstName || !lastName) {
+      alert("First and last name are required.");
+      return;
+    }
+
+    const duplicate = people.find(
+      (person) =>
+        person.first_name.trim().toLowerCase() === firstName.toLowerCase() &&
+        person.last_name.trim().toLowerCase() === lastName.toLowerCase()
+    );
+
+    if (
+      duplicate &&
+      !window.confirm(
+        `${duplicate.first_name} ${duplicate.last_name} already exists. Add another person with the same name?`
+      )
+    ) {
+      choosePerson(duplicate);
+      cancelNewPerson();
+      return;
+    }
+
+    setSavingNewPerson(true);
 
     const { data, error } = await supabase
       .from("people")
-      .insert({ first_name: firstName, last_name: lastName, phone, email, role })
-      .select("id, first_name, last_name, phone, email, role")
+      .insert({
+        first_name: firstName,
+        last_name: lastName,
+        phone: newPersonPhone.trim() || null,
+        email: newPersonEmail.trim() || null,
+        role: newPersonRole,
+        notes: newPersonNotes.trim() || null,
+      })
+      .select("id, first_name, last_name, phone, email, role, notes")
       .single();
+
+    setSavingNewPerson(false);
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    setPeople((current) => [...current, data]);
-    setSelectedPerson(data);
-    setPersonSearch(`${data.first_name} ${data.last_name}`);
+    const createdPerson = data as Person;
+
+    setPeople((current) =>
+      [...current, createdPerson].sort((a, b) =>
+        `${a.last_name} ${a.first_name}`.localeCompare(
+          `${b.last_name} ${b.first_name}`
+        )
+      )
+    );
+
+    choosePerson(createdPerson);
+    cancelNewPerson();
   }
 
   async function submitCheckout() {
@@ -314,6 +407,8 @@ export default function CheckOutPage() {
     setSelectedVehicle(null);
     setPersonSearch("");
     setSelectedPerson(null);
+    setPersonComboOpen(false);
+    cancelNewPerson();
     setOnBehalfOf("");
     setCheckedOutBy("");
     setNotes("");
@@ -464,65 +559,209 @@ export default function CheckOutPage() {
           Person
           <RequiredAsterisk />
         </label>
-        <input
-          value={personSearch}
-          onChange={(e) => {
-            setPersonSearch(e.target.value);
-            setSelectedPerson(null);
-          }}
-          placeholder="Type player/staff name..."
-          className="border rounded p-3 w-full"
-          required
-        />
 
-        {!selectedPerson && personSearch && (
-          <div className="border rounded mt-2 mb-4 bg-white overflow-hidden">
-            {matchingPeople.length === 0 ? (
-              <div className="p-3">
-                <p className="text-gray-500 mb-2">No people found.</p>
-                <button
-                  onClick={addNewPerson}
-                  className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-2 rounded w-full"
-                >
-                  Add New Person
-                </button>
-              </div>
-            ) : (
-              <>
-                {matchingPeople.map((p) => (
+        <div className="relative">
+          <input
+            value={personSearch}
+            onFocus={() => {
+              if (!selectedPerson && !showNewPersonForm) {
+                setPersonComboOpen(true);
+              }
+            }}
+            onChange={(e) => {
+              setPersonSearch(e.target.value);
+              setSelectedPerson(null);
+              setShowNewPersonForm(false);
+              setPersonComboOpen(true);
+            }}
+            placeholder="Type player or staff name..."
+            autoComplete="off"
+            className="border rounded p-3 w-full"
+            required
+          />
+
+          {personComboOpen && !selectedPerson && !showNewPersonForm && (
+            <div className="absolute z-30 mt-1 max-h-80 w-full overflow-y-auto rounded border bg-white shadow-lg">
+              {matchingPeople.length > 0 ? (
+                matchingPeople.map((person) => (
                   <button
-                    key={p.id}
-                    onClick={() => {
-                      setSelectedPerson(p);
-                      setPersonSearch(`${p.first_name} ${p.last_name}`);
-                    }}
-                    className="block w-full text-left p-3 border-b hover:bg-gray-100"
+                    key={person.id}
+                    type="button"
+                    onClick={() => choosePerson(person)}
+                    className="block w-full border-b p-3 text-left hover:bg-gray-100"
                   >
                     <div className="font-semibold">
-                      {p.first_name} {p.last_name}
+                      {person.first_name} {person.last_name}
                     </div>
                     <div className="text-sm text-gray-600">
-                      {p.role || "Misc"}
-                      {p.phone ? ` — ${p.phone}` : ""}
+                      {person.role || "Misc"}
+                      {person.phone ? ` — ${person.phone}` : ""}
+                      {person.email ? ` — ${person.email}` : ""}
                     </div>
                   </button>
-                ))}
+                ))
+              ) : (
+                <div className="p-3 text-sm text-gray-500">
+                  No matching people found.
+                </div>
+              )}
 
-                <button
-                  onClick={addNewPerson}
-                  className="block w-full text-left p-3 bg-[#FFDE00]/20 text-[#1F4E1A] font-semibold hover:bg-[#FFDE00]/30"
+              <button
+                type="button"
+                onClick={openNewPersonForm}
+                className="block w-full bg-[#FFDE00]/25 p-3 text-left font-bold text-[#1F4E1A] hover:bg-[#FFDE00]/40"
+              >
+                + Add New Person
+                {personSearch.trim() ? `: ${personSearch.trim()}` : ""}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {!selectedPerson && !showNewPersonForm && (
+          <button
+            type="button"
+            onClick={openNewPersonForm}
+            className="mt-2 text-sm font-semibold text-[#1F4E1A] underline"
+          >
+            Person not listed? Add them here
+          </button>
+        )}
+
+        {showNewPersonForm && (
+          <div className="my-4 rounded-lg border-2 border-[#FFDE00] bg-[#FFDE00]/10 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-[#1F4E1A]">
+                Add New Person
+              </h2>
+
+              <button
+                type="button"
+                onClick={cancelNewPerson}
+                disabled={savingNewPerson}
+                className="text-sm font-semibold text-red-700 hover:underline disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-semibold">
+                  First Name
+                  <RequiredAsterisk />
+                </label>
+                <input
+                  value={newPersonFirstName}
+                  onChange={(e) => setNewPersonFirstName(e.target.value)}
+                  className="w-full rounded border bg-white p-3"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold">
+                  Last Name
+                  <RequiredAsterisk />
+                </label>
+                <input
+                  value={newPersonLastName}
+                  onChange={(e) => setNewPersonLastName(e.target.value)}
+                  className="w-full rounded border bg-white p-3"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold">
+                  Type of Person
+                </label>
+                <select
+                  value={newPersonRole}
+                  onChange={(e) => setNewPersonRole(e.target.value)}
+                  className="w-full rounded border bg-white p-3"
                 >
-                  + Add New Person
-                </button>
-              </>
-            )}
+                  {ROLE_OPTIONS.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold">
+                  Phone
+                </label>
+                <input
+                  value={newPersonPhone}
+                  onChange={(e) => setNewPersonPhone(e.target.value)}
+                  type="tel"
+                  className="w-full rounded border bg-white p-3"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-semibold">
+                  Email
+                </label>
+                <input
+                  value={newPersonEmail}
+                  onChange={(e) => setNewPersonEmail(e.target.value)}
+                  type="email"
+                  className="w-full rounded border bg-white p-3"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-semibold">
+                  Notes
+                </label>
+                <textarea
+                  value={newPersonNotes}
+                  onChange={(e) => setNewPersonNotes(e.target.value)}
+                  rows={3}
+                  className="w-full rounded border bg-white p-3"
+                  placeholder="Optional person notes"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveNewPerson}
+              disabled={savingNewPerson}
+              className="mt-4 w-full rounded bg-[#367C2B] px-4 py-3 font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingNewPerson ? "Saving Person..." : "Save and Select Person"}
+            </button>
           </div>
         )}
 
         {selectedPerson && (
-          <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 my-4">
-            Selected: {selectedPerson.first_name} {selectedPerson.last_name} —{" "}
-            {selectedPerson.role || "Misc"}
+          <div className="my-4 flex items-start justify-between gap-3 rounded border border-[#FFDE00] bg-[#FFDE00]/20 p-3">
+            <div>
+              <div className="font-semibold">
+                Selected: {selectedPerson.first_name}{" "}
+                {selectedPerson.last_name}
+              </div>
+              <div className="text-sm text-gray-600">
+                {selectedPerson.role || "Misc"}
+                {selectedPerson.phone ? ` — ${selectedPerson.phone}` : ""}
+                {selectedPerson.email ? ` — ${selectedPerson.email}` : ""}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedPerson(null);
+                setPersonSearch("");
+                setPersonComboOpen(true);
+              }}
+              className="text-sm font-semibold text-red-700 hover:underline"
+            >
+              Change
+            </button>
           </div>
         )}
 
