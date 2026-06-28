@@ -12,6 +12,7 @@ type Vehicle = {
   color: string | null;
   vin: string | null;
   dealership: string | null;
+  return_lot_category: string | null;
   current_location: string | null;
   status: string | null;
   notes: string | null;
@@ -113,7 +114,7 @@ export default function CarsPage() {
     const checkout = getCheckoutForVehicle(v);
 
     const text =
-      `${v.car_number} ${v.make} ${v.model} ${v.type} ${v.color} ${v.vin} ${v.dealership} ${v.current_location} ${v.status} ${checkout?.person_first_name} ${checkout?.person_last_name} ${checkout?.on_behalf_of}`.toLowerCase();
+      `${v.car_number} ${v.make} ${v.model} ${v.type} ${v.color} ${v.vin} ${v.dealership} ${v.return_lot_category} ${v.current_location} ${v.status} ${checkout?.person_first_name} ${checkout?.person_last_name} ${checkout?.on_behalf_of}`.toLowerCase();
 
     return text.includes(search.toLowerCase());
   });
@@ -237,6 +238,7 @@ export default function CarsPage() {
       "Time Out",
       "VIN",
       "Dealership",
+      "Return Lot Category",
       "Notes",
     ];
 
@@ -267,6 +269,7 @@ export default function CarsPage() {
         timeOut,
         vehicle.vin,
         vehicle.dealership,
+        vehicle.return_lot_category,
         vehicle.notes,
       ]
         .map(csvSafe)
@@ -303,7 +306,7 @@ export default function CarsPage() {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search car #, model, color, person, VIN, location..."
+          placeholder="Search car #, model, color, person, VIN, dealership, return lot category..."
           className="border rounded p-3 w-full mb-3"
         />
 
@@ -436,10 +439,20 @@ export default function CarsPage() {
                     <p className="text-xs text-gray-500">VIN: {v.vin}</p>
                   )}
 
-                  {v.dealership && (
-                    <p className="text-xs text-gray-500">
-                      Dealership: {v.dealership}
-                    </p>
+                  {(v.dealership || v.return_lot_category) && (
+                    <div className="mt-1 grid gap-1 text-xs text-gray-500 sm:grid-cols-2">
+                      <p>
+                        <span className="font-semibold">Dealership:</span>{" "}
+                        {v.dealership || "Not assigned"}
+                      </p>
+
+                      <p>
+                        <span className="font-semibold">
+                          Return Lot Category:
+                        </span>{" "}
+                        {v.return_lot_category || "Not assigned"}
+                      </p>
+                    </div>
                   )}
                 </div>
 

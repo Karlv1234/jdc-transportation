@@ -9,6 +9,8 @@ type Vehicle = {
   model: string | null;
   type: string | null;
   color: string | null;
+  dealership: string | null;
+  return_lot_category: string | null;
   current_location: string | null;
   status: string | null;
 };
@@ -205,6 +207,16 @@ export default function CheckInPage() {
                       {v.model} — {v.type} — {v.color}
                     </div>
 
+                    <div className="mt-1 text-xs text-gray-500">
+                      <span className="font-semibold">Dealership:</span>{" "}
+                      {v.dealership || "Not assigned"}
+                      {" | "}
+                      <span className="font-semibold">
+                        Return Lot Category:
+                      </span>{" "}
+                      {v.return_lot_category || "Not assigned"}
+                    </div>
+
                     <div className="text-sm text-gray-600">
                       {checkout?.person_first_name}{" "}
                       {checkout?.person_last_name}
@@ -222,8 +234,27 @@ export default function CheckInPage() {
               Selected: Car #{selectedVehicle.car_number}
             </p>
 
+            <p className="mt-1 text-sm text-gray-700">
+              {selectedVehicle.model || "Unknown model"}
+              {selectedVehicle.color ? ` — ${selectedVehicle.color}` : ""}
+            </p>
+
+            <div className="mt-2 rounded border border-[#FFDE00] bg-white/70 p-2 text-sm">
+              <p>
+                <span className="font-semibold">Dealership:</span>{" "}
+                {selectedVehicle.dealership || "Not assigned"}
+              </p>
+
+              <p>
+                <span className="font-semibold">
+                  Return Lot Category:
+                </span>{" "}
+                {selectedVehicle.return_lot_category || "Not assigned"}
+              </p>
+            </div>
+
             {selectedCheckout && (
-              <p className="text-sm text-gray-700">
+              <p className="mt-2 text-sm text-gray-700">
                 Checked out to: {selectedCheckout.person_first_name}{" "}
                 {selectedCheckout.person_last_name}
               </p>
