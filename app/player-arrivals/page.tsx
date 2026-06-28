@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../src/lib/supabase";
 
 type Person = {
@@ -11,11 +11,8 @@ type Person = {
   role: string | null;
 };
 
-type Arrival = {
+type ArrivalRow = {
   id: number;
-  person_id: number | null;
-  player_first_name: string;
-  player_last_name: string;
   arrival_method: string;
   airline: string | null;
   flight_number: string | null;
@@ -23,17 +20,46 @@ type Arrival = {
   tail_number: string | null;
   arrival_date: string | null;
   estimated_arrival_time: string | null;
+  status: string | null;
   notes: string | null;
+};
+
+type PassengerRow = {
+  id: number;
+  arrival_id: number;
+  person_id: number;
+  passenger_notes: string | null;
+};
+
+type ArrivalPassenger = Person & {
+  passenger_link_id: number;
+  checked_out: boolean;
+};
+
+type Arrival = ArrivalRow & {
+  passengers: ArrivalPassenger[];
 };
 
 type OpenCheckout = {
   person_id: number | null;
 };
 
+type ArrivalForm = {
+  arrival_method: string;
+  airline: string;
+  flight_number: string;
+  flight_origin: string;
+  tail_number: string;
+  arrival_date: string;
+  estimated_arrival_time: string;
+  status: string;
+  notes: string;
+};
+
 const ARRIVAL_METHODS = [
   "Commercial Flight",
-  "Rental Car",
   "Private Aircraft",
+  "Rental Car",
   "Other",
 ];
 
@@ -45,6 +71,18 @@ const PERSON_TYPES = [
   "Misc",
 ];
 
+const EMPTY_FORM: ArrivalForm = {
+  arrival_method: "Commercial Flight",
+  airline: "",
+  flight_number: "",
+  flight_origin: "",
+  tail_number: "",
+  arrival_date: "",
+  estimated_arrival_time: "",
+  status: "Expected",
+  notes: "",
+};
+
 function dateToInputValue(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -53,7 +91,7 @@ function dateToInputValue(date: Date) {
 }
 
 function formatDate(dateText: string | null) {
-  if (!dateText) return "";
+  if (!dateText) return "Date TBD";
 
   return new Date(`${dateText}T00:00:00`).toLocaleDateString([], {
     weekday: "short",
@@ -63,7 +101,7 @@ function formatDate(dateText: string | null) {
 }
 
 function formatTime(time: string | null) {
-  if (!time) return "";
+  if (!time) return "Time TBD";
 
   const [hours, minutes] = time.split(":");
   const date = new Date();
@@ -75,13 +113,234 @@ function formatTime(time: string | null) {
   });
 }
 
+function normalizeFlightNumber(airline: string, flightNumber: string) {
+  const compact = flightNumber.replace(/\s+/g, "").toUpperCase();
+
+  if (!compact) return "";
+
+  if (/^([A-Z]{2}|[A-Z][0-9])\d+/.test(compact)) {
+    return compact;
+  }
+
+  const normalizedAirline = airline.trim().toLowerCase();
+
+  if (["american", "american airlines", "aa"].includes(normalizedAirline)) {
+    return `AA${compact}`;
+  }
+
+  if (["delta", "delta air lines", "dl"].includes(normalizedAirline)) {
+    return `DL${compact}`;
+  }
+
+  if (["united", "united airlines", "ua"].includes(normalizedAirline)) {
+    return `UA${compact}`;
+  }
+
+  if (["allegiant", "allegiant air", "g4"].includes(normalizedAirline)) {
+    return `G4${compact}`;
+  }
+
+  return compact;
+}
+
+function flightLabel(arrival: ArrivalRow) {
+  if (arrival.arrival_method === "Commercial Flight") {
+    return arrival.flight_number || "Commercial flight";
+  }
+
+  if (arrival.arrival_method === "Private Aircraft") {
+    return arrival.tail_number || "Private aircraft";
+  }
+
+  return arrival.arrival_method;
+}
+
+function sameFlight(arrival: Arrival, form: ArrivalForm) {
+  if (!form.arrival_date || arrival.arrival_date !== form.arrival_date) {
+    return false;
+  }
+
+  if (
+    form.arrival_method === "Commercial Flight" &&
+    arrival.arrival_method === "Commercial Flight"
+  ) {
+    return (
+      normalizeFlightNumber(form.airline, form.flight_number) ===
+      normalizeFlightNumber(
+        arrival.airline || "",
+        arrival.flight_number || ""
+      )
+    );
+  }
+
+  if (
+    form.arrival_method === "Private Aircraft" &&
+    arrival.arrival_method === "Private Aircraft"
+  ) {
+    const formTail = form.tail_number
+      .replace(/[\s-]+/g, "")
+      .toUpperCase();
+    const arrivalTail = (arrival.tail_number || "")
+      .replace(/[\s-]+/g, "")
+      .toUpperCase();
+    const sameTime =
+      (form.estimated_arrival_time || "") ===
+      (arrival.estimated_arrival_time || "").slice(0, 5);
+
+    if (formTail && arrivalTail) {
+      return formTail === arrivalTail && sameTime;
+    }
+
+    return (
+      !formTail &&
+      !arrivalTail &&
+      Boolean(form.airline.trim()) &&
+      form.airline.trim().toLowerCase() ===
+        (arrival.airline || "").trim().toLowerCase() &&
+      sameTime
+    );
+  }
+
+  return false;
+}
+
+function PassengerPicker({
+  people,
+  selectedIds,
+  onChange,
+  personArrivalLabels,
+}: {
+  people: Person[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+  personArrivalLabels: Map<number, string>;
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+
+  const selectedPeople = selectedIds
+    .map((id) => people.find((person) => person.id === id))
+    .filter((person): person is Person => Boolean(person));
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const matches = people
+    .filter((person) => !selectedIds.includes(person.id))
+    .filter((person) => {
+      if (!normalizedSearch) return true;
+
+      return `${person.first_name} ${person.last_name} ${person.role || ""}`
+        .toLowerCase()
+        .includes(normalizedSearch);
+    })
+    .slice(0, 10);
+
+  function addPerson(id: number) {
+    onChange([...selectedIds, id]);
+    setSearch("");
+    setOpen(true);
+  }
+
+  function removePerson(id: number) {
+    onChange(selectedIds.filter((personId) => personId !== id));
+  }
+
+  return (
+    <div>
+      <label className="mb-1 block font-semibold">
+        People on This Arrival *
+      </label>
+
+      {selectedPeople.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {selectedPeople.map((person) => (
+            <span
+              key={person.id}
+              className="inline-flex items-center gap-2 rounded-full bg-[#1F4E1A] px-3 py-2 text-sm font-semibold text-white"
+            >
+              {person.first_name} {person.last_name}
+              <button
+                type="button"
+                onClick={() => removePerson(person.id)}
+                className="rounded-full px-1 hover:bg-white/20"
+                aria-label={`Remove ${person.first_name} ${person.last_name}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="relative">
+        <input
+          value={search}
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setOpen(true);
+          }}
+          placeholder="Type a player or staff name..."
+          autoComplete="off"
+          className="w-full rounded border p-3"
+        />
+
+        {open && (
+          <div className="absolute z-30 mt-1 max-h-72 w-full overflow-y-auto rounded border bg-white shadow-xl">
+            {matches.length === 0 ? (
+              <div className="p-3 text-sm text-gray-500">
+                No matching people available.
+              </div>
+            ) : (
+              matches.map((person) => {
+                const existingLabel = personArrivalLabels.get(person.id);
+
+                return (
+                  <button
+                    key={person.id}
+                    type="button"
+                    onClick={() => addPerson(person.id)}
+                    className="block w-full border-b p-3 text-left hover:bg-gray-100"
+                  >
+                    <div className="font-semibold">
+                      {person.first_name} {person.last_name}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {person.role || "No type"}
+                    </div>
+                    {existingLabel && (
+                      <div className="mt-1 text-xs font-semibold text-orange-700">
+                        Currently assigned to {existingLabel}; saving will move
+                        this person.
+                      </div>
+                    )}
+                  </button>
+                );
+              })
+            )}
+
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="block w-full bg-gray-100 p-2 text-center text-sm font-semibold"
+            >
+              Close list
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function PlayerArrivalsPage() {
   const [people, setPeople] = useState<Person[]>([]);
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
-  const [openCheckouts, setOpenCheckouts] = useState<OpenCheckout[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [personSearch, setPersonSearch] = useState("");
-  const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
+  const [form, setForm] = useState<ArrivalForm>({ ...EMPTY_FORM });
+  const [selectedPersonIds, setSelectedPersonIds] = useState<number[]>([]);
+  const [saving, setSaving] = useState(false);
 
   const [showNewPersonForm, setShowNewPersonForm] = useState(false);
   const [newPersonFirstName, setNewPersonFirstName] = useState("");
@@ -89,182 +348,195 @@ export default function PlayerArrivalsPage() {
   const [newPersonPhone, setNewPersonPhone] = useState("");
   const [newPersonEmail, setNewPersonEmail] = useState("");
   const [newPersonType, setNewPersonType] = useState("Player");
-
-  const [arrivalMethod, setArrivalMethod] = useState("Commercial Flight");
-  const [airline, setAirline] = useState("");
-  const [flightNumber, setFlightNumber] = useState("");
-  const [flightOrigin, setFlightOrigin] = useState("");
-  const [tailNumber, setTailNumber] = useState("");
-  const [arrivalDate, setArrivalDate] = useState("");
-  const [arrivalTime, setArrivalTime] = useState("");
-  const [notes, setNotes] = useState("");
-  const [existingArrivalId, setExistingArrivalId] = useState<number | null>(null);
-  const [existingArrivalCount, setExistingArrivalCount] = useState(0);
-  const [savingArrival, setSavingArrival] = useState(false);
+  const [savingNewPerson, setSavingNewPerson] = useState(false);
 
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("");
 
   const [editingArrivalId, setEditingArrivalId] = useState<number | null>(null);
-  const [editArrivalMethod, setEditArrivalMethod] = useState("Commercial Flight");
-  const [editAirline, setEditAirline] = useState("");
-  const [editFlightNumber, setEditFlightNumber] = useState("");
-  const [editFlightOrigin, setEditFlightOrigin] = useState("");
-  const [editTailNumber, setEditTailNumber] = useState("");
-  const [editArrivalDate, setEditArrivalDate] = useState("");
-  const [editArrivalTime, setEditArrivalTime] = useState("");
-  const [editNotes, setEditNotes] = useState("");
-  const [savingArrivalEdit, setSavingArrivalEdit] = useState(false);
+  const [editForm, setEditForm] = useState<ArrivalForm>({ ...EMPTY_FORM });
+  const [editPersonIds, setEditPersonIds] = useState<number[]>([]);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const today = dateToInputValue(new Date());
-
   const tomorrowDate = new Date();
   tomorrowDate.setDate(tomorrowDate.getDate() + 1);
   const tomorrow = dateToInputValue(tomorrowDate);
 
   async function loadData() {
-    const { data: peopleData, error: peopleError } = await supabase
-      .from("people")
-      .select("id, first_name, last_name, role")
-      .order("last_name");
+    setLoading(true);
 
-    if (peopleError) {
-      alert(peopleError.message);
+    const [
+      peopleResult,
+      arrivalsResult,
+      passengerResult,
+      checkoutResult,
+    ] = await Promise.all([
+      supabase
+        .from("people")
+        .select("id, first_name, last_name, role")
+        .order("last_name")
+        .order("first_name"),
+      supabase
+        .from("player_arrivals")
+        .select(
+          "id, arrival_method, airline, flight_number, flight_origin, tail_number, arrival_date, estimated_arrival_time, status, notes"
+        )
+        .order("arrival_date", { ascending: true })
+        .order("estimated_arrival_time", { ascending: true }),
+      supabase
+        .from("arrival_passengers")
+        .select("id, arrival_id, person_id, passenger_notes"),
+      supabase
+        .from("checkouts")
+        .select("person_id")
+        .is("time_in", null),
+    ]);
+
+    const error =
+      peopleResult.error ||
+      arrivalsResult.error ||
+      passengerResult.error ||
+      checkoutResult.error;
+
+    if (error) {
+      setLoading(false);
+      alert(error.message);
       return;
     }
 
-    const { data: arrivalData, error: arrivalError } = await supabase
-      .from("player_arrivals")
-      .select(
-        "id, person_id, player_first_name, player_last_name, arrival_method, airline, flight_number, flight_origin, tail_number, arrival_date, estimated_arrival_time, notes"
-      )
-      .order("arrival_date", { ascending: true })
-      .order("estimated_arrival_time", { ascending: true });
+    const loadedPeople = (peopleResult.data || []) as Person[];
+    const peopleById = new Map(
+      loadedPeople.map((person) => [person.id, person])
+    );
 
-    if (arrivalError) {
-      alert(arrivalError.message);
-      return;
+    const checkedOutIds = new Set(
+      ((checkoutResult.data || []) as OpenCheckout[])
+        .map((checkout) => checkout.person_id)
+        .filter((id): id is number => id !== null)
+    );
+
+    const passengersByArrival = new Map<number, ArrivalPassenger[]>();
+
+    for (const link of (passengerResult.data || []) as PassengerRow[]) {
+      const person = peopleById.get(link.person_id);
+      if (!person) continue;
+
+      const list = passengersByArrival.get(link.arrival_id) || [];
+      list.push({
+        ...person,
+        passenger_link_id: link.id,
+        checked_out: checkedOutIds.has(person.id),
+      });
+      passengersByArrival.set(link.arrival_id, list);
     }
 
-    const { data: checkoutData, error: checkoutError } = await supabase
-      .from("checkouts")
-      .select("person_id")
-      .is("time_in", null);
+    const loadedArrivals = ((arrivalsResult.data || []) as ArrivalRow[]).map(
+      (arrival) => ({
+        ...arrival,
+        passengers: (passengersByArrival.get(arrival.id) || []).sort((a, b) =>
+          `${a.last_name} ${a.first_name}`.localeCompare(
+            `${b.last_name} ${b.first_name}`
+          )
+        ),
+      })
+    );
 
-    if (checkoutError) {
-      alert(checkoutError.message);
-      return;
-    }
-
-    setPeople(peopleData || []);
-    setArrivals(arrivalData || []);
-    setOpenCheckouts(checkoutData || []);
+    setPeople(loadedPeople);
+    setArrivals(loadedArrivals);
+    setLoading(false);
   }
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const checkedOutPersonIds = openCheckouts
-    .map((checkout) => checkout.person_id)
-    .filter((id): id is number => id !== null);
+  const personArrivalLabels = useMemo(() => {
+    const result = new Map<number, string>();
 
-  const visibleArrivals = arrivals.filter((arrival) => {
-    if (!arrival.person_id) return true;
-    return !checkedOutPersonIds.includes(arrival.person_id);
-  });
+    for (const arrival of arrivals) {
+      for (const passenger of arrival.passengers) {
+        result.set(
+          passenger.id,
+          `${flightLabel(arrival)} on ${formatDate(arrival.arrival_date)}`
+        );
+      }
+    }
 
-  const matchingPeople = people
-    .filter((person) => {
-      const text = `${person.first_name} ${person.last_name}`.toLowerCase();
-      return text.includes(personSearch.toLowerCase());
-    })
-    .slice(0, 8);
+    return result;
+  }, [arrivals]);
 
-  const todayArrivals = visibleArrivals.filter(
+  const existingFlight = useMemo(
+    () => arrivals.find((arrival) => sameFlight(arrival, form)) || null,
+    [arrivals, form]
+  );
+
+  const visibleArrivals = useMemo(
+    () =>
+      arrivals.filter(
+        (arrival) =>
+          arrival.passengers.length === 0 ||
+          arrival.passengers.some((passenger) => !passenger.checked_out)
+      ),
+    [arrivals]
+  );
+
+  const filteredArrivals = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return visibleArrivals.filter((arrival) => {
+      const passengerNames = arrival.passengers
+        .map(
+          (passenger) =>
+            `${passenger.first_name} ${passenger.last_name} ${passenger.role || ""}`
+        )
+        .join(" ");
+
+      const searchable = [
+        passengerNames,
+        arrival.arrival_method,
+        arrival.airline,
+        arrival.flight_number,
+        arrival.flight_origin,
+        arrival.tail_number,
+        arrival.notes,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return (
+        (!query || searchable.includes(query)) &&
+        (!methodFilter || arrival.arrival_method === methodFilter)
+      );
+    });
+  }, [visibleArrivals, search, methodFilter]);
+
+  const todayArrivals = filteredArrivals.filter(
     (arrival) => arrival.arrival_date === today
   );
 
-  const tomorrowArrivals = visibleArrivals.filter(
+  const tomorrowArrivals = filteredArrivals.filter(
     (arrival) => arrival.arrival_date === tomorrow
   );
 
-  const filteredArrivals = visibleArrivals.filter((arrival) => {
-    const text =
-      `${arrival.player_first_name} ${arrival.player_last_name} ${arrival.arrival_method} ${arrival.airline} ${arrival.flight_number} ${arrival.flight_origin} ${arrival.tail_number} ${arrival.notes}`.toLowerCase();
-
-    const matchesSearch = text.includes(search.toLowerCase());
-    const matchesMethod =
-      !methodFilter || arrival.arrival_method === methodFilter;
-
-    return matchesSearch && matchesMethod;
-  });
-
-  function clearArrivalEntryFields() {
-    setArrivalMethod("Commercial Flight");
-    setAirline("");
-    setFlightNumber("");
-    setFlightOrigin("");
-    setTailNumber("");
-    setArrivalDate("");
-    setArrivalTime("");
-    setNotes("");
-    setExistingArrivalId(null);
-    setExistingArrivalCount(0);
+  function updateForm<K extends keyof ArrivalForm>(
+    key: K,
+    value: ArrivalForm[K]
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
   }
 
-  function selectPersonForArrival(person: Person) {
-    setSelectedPerson(person);
-    setShowNewPersonForm(false);
-    setPersonSearch(`${person.first_name} ${person.last_name}`);
-
-    const personArrivals = arrivals
-      .filter((arrival) => arrival.person_id === person.id)
-      .sort((a, b) => b.id - a.id);
-
-    const existingArrival = personArrivals[0];
-
-    if (!existingArrival) {
-      clearArrivalEntryFields();
-      return;
-    }
-
-    setExistingArrivalId(existingArrival.id);
-    setExistingArrivalCount(personArrivals.length);
-    setArrivalMethod(existingArrival.arrival_method || "Commercial Flight");
-    setAirline(existingArrival.airline || "");
-    setFlightNumber(existingArrival.flight_number || "");
-    setFlightOrigin(existingArrival.flight_origin || "");
-    setTailNumber(existingArrival.tail_number || "");
-    setArrivalDate(existingArrival.arrival_date || "");
-    setArrivalTime(
-      existingArrival.estimated_arrival_time
-        ? existingArrival.estimated_arrival_time.slice(0, 5)
-        : ""
-    );
-    setNotes(existingArrival.notes || "");
+  function updateEditForm<K extends keyof ArrivalForm>(
+    key: K,
+    value: ArrivalForm[K]
+  ) {
+    setEditForm((current) => ({ ...current, [key]: value }));
   }
 
-  function openNewPersonForm() {
-    const typedName = personSearch.trim();
-    const parts = typedName.split(" ").filter(Boolean);
-
-    setNewPersonFirstName(parts[0] || "");
-    setNewPersonLastName(parts.slice(1).join(" ") || "");
-    setNewPersonPhone("");
-    setNewPersonEmail("");
-    setNewPersonType("Player");
-    setShowNewPersonForm(true);
-    setSelectedPerson(null);
-  }
-
-  function cancelNewPerson() {
-    setShowNewPersonForm(false);
-    setNewPersonFirstName("");
-    setNewPersonLastName("");
-    setNewPersonPhone("");
-    setNewPersonEmail("");
-    setNewPersonType("Player");
+  function resetAddForm() {
+    setForm({ ...EMPTY_FORM });
+    setSelectedPersonIds([]);
   }
 
   async function saveNewPerson() {
@@ -276,219 +548,199 @@ export default function PlayerArrivalsPage() {
       return;
     }
 
+    const duplicate = people.find(
+      (person) =>
+        person.first_name.trim().toLowerCase() === firstName.toLowerCase() &&
+        person.last_name.trim().toLowerCase() === lastName.toLowerCase()
+    );
+
+    if (
+      duplicate &&
+      !window.confirm(
+        `${duplicate.first_name} ${duplicate.last_name} already exists. Select the existing person instead?`
+      )
+    ) {
+      return;
+    }
+
+    if (duplicate) {
+      setSelectedPersonIds((current) =>
+        current.includes(duplicate.id) ? current : [...current, duplicate.id]
+      );
+      setShowNewPersonForm(false);
+      return;
+    }
+
+    setSavingNewPerson(true);
+
     const { data, error } = await supabase
       .from("people")
       .insert({
         first_name: firstName,
         last_name: lastName,
-        phone: newPersonPhone.trim(),
-        email: newPersonEmail.trim(),
+        phone: newPersonPhone.trim() || null,
+        email: newPersonEmail.trim() || null,
         role: newPersonType,
-        notes: "",
+        notes: null,
       })
       .select("id, first_name, last_name, role")
       .single();
+
+    setSavingNewPerson(false);
 
     if (error) {
       alert(error.message);
       return;
     }
 
+    const person = data as Person;
+
     setPeople((current) =>
-      [...current, data].sort((a, b) =>
+      [...current, person].sort((a, b) =>
         `${a.last_name} ${a.first_name}`.localeCompare(
           `${b.last_name} ${b.first_name}`
         )
       )
     );
-    selectPersonForArrival(data);
-    cancelNewPerson();
+    setSelectedPersonIds((current) => [...current, person.id]);
+    setShowNewPersonForm(false);
+    setNewPersonFirstName("");
+    setNewPersonLastName("");
+    setNewPersonPhone("");
+    setNewPersonEmail("");
+    setNewPersonType("Player");
   }
 
-  async function addArrival() {
-    if (!selectedPerson) {
-      alert("Please select or add a person.");
+  async function saveArrival() {
+    if (selectedPersonIds.length === 0) {
+      alert("Select at least one person.");
       return;
     }
 
-    if (!arrivalDate) {
-      alert("Please enter an arrival date.");
+    if (!form.arrival_date) {
+      alert("Arrival date is required.");
       return;
     }
 
-    if (!arrivalTime) {
-      alert("Please enter an estimated arrival time.");
+    if (
+      form.arrival_method === "Commercial Flight" &&
+      !form.flight_number.trim()
+    ) {
+      alert("Commercial flights require a flight number.");
       return;
     }
 
-    const isCommercial = arrivalMethod === "Commercial Flight";
-    const isPrivate = arrivalMethod === "Private Aircraft";
-    const isFlight = isCommercial || isPrivate;
+    setSaving(true);
 
-    const arrivalPayload = {
-      person_id: selectedPerson.id,
-      player_first_name: selectedPerson.first_name,
-      player_last_name: selectedPerson.last_name,
-      arrival_method: arrivalMethod,
-      airline: isFlight ? airline.trim() || null : null,
-      flight_number: isCommercial ? flightNumber.trim() || null : null,
-      flight_origin: flightOrigin.trim() || null,
-      tail_number: isPrivate ? tailNumber.trim() || null : null,
-      arrival_date: arrivalDate,
-      estimated_arrival_time: arrivalTime || null,
-      notes: notes.trim() || null,
-    };
+    const { error } = await supabase.rpc("save_arrival_flight", {
+      p_arrival_id: existingFlight?.id || null,
+      p_arrival_method: form.arrival_method,
+      p_airline: form.airline || null,
+      p_flight_number:
+        form.arrival_method === "Commercial Flight"
+          ? normalizeFlightNumber(form.airline, form.flight_number)
+          : null,
+      p_flight_origin: form.flight_origin || null,
+      p_tail_number:
+        form.arrival_method === "Private Aircraft"
+          ? form.tail_number
+          : null,
+      p_arrival_date: form.arrival_date,
+      p_estimated_arrival_time: form.estimated_arrival_time || null,
+      p_status: form.status || "Expected",
+      p_notes: form.notes || null,
+      p_person_ids: selectedPersonIds,
+      p_replace_passengers: false,
+    });
 
-    setSavingArrival(true);
-
-    const { data: existingArrivals, error: findError } = await supabase
-      .from("player_arrivals")
-      .select("id")
-      .eq("person_id", selectedPerson.id)
-      .order("id", { ascending: false });
-
-    if (findError) {
-      setSavingArrival(false);
-      alert(findError.message);
-      return;
-    }
-
-    const existingIds = (existingArrivals || []).map((arrival) => arrival.id);
-    const targetId =
-      existingArrivalId && existingIds.includes(existingArrivalId)
-        ? existingArrivalId
-        : existingIds[0] || null;
-
-    if (targetId) {
-      const { error: updateError } = await supabase
-        .from("player_arrivals")
-        .update(arrivalPayload)
-        .eq("id", targetId);
-
-      if (updateError) {
-        setSavingArrival(false);
-        alert(updateError.message);
-        return;
-      }
-
-      const duplicateIds = existingIds.filter((id) => id !== targetId);
-
-      if (duplicateIds.length > 0) {
-        const { error: deleteDuplicateError } = await supabase
-          .from("player_arrivals")
-          .delete()
-          .in("id", duplicateIds);
-
-        if (deleteDuplicateError) {
-          setSavingArrival(false);
-          alert(
-            `The arrival was updated, but duplicate rows could not be removed: ${deleteDuplicateError.message}`
-          );
-          await loadData();
-          return;
-        }
-      }
-
-      alert(
-        duplicateIds.length > 0
-          ? `Existing arrival updated and ${duplicateIds.length} duplicate record${
-              duplicateIds.length === 1 ? "" : "s"
-            } removed.`
-          : "Existing arrival updated."
-      );
-    } else {
-      const { error: insertError } = await supabase
-        .from("player_arrivals")
-        .insert(arrivalPayload);
-
-      if (insertError) {
-        setSavingArrival(false);
-        alert(insertError.message);
-        return;
-      }
-
-      alert("Arrival added.");
-    }
-
-    setSavingArrival(false);
-    setPersonSearch("");
-    setSelectedPerson(null);
-    clearArrivalEntryFields();
-    await loadData();
-  }
-
-  function beginEditArrival(arrival: Arrival) {
-    setEditingArrivalId(arrival.id);
-    setEditArrivalMethod(arrival.arrival_method || "Commercial Flight");
-    setEditAirline(arrival.airline || "");
-    setEditFlightNumber(arrival.flight_number || "");
-    setEditFlightOrigin(arrival.flight_origin || "");
-    setEditTailNumber(arrival.tail_number || "");
-    setEditArrivalDate(arrival.arrival_date || "");
-    setEditArrivalTime(
-      arrival.estimated_arrival_time
-        ? arrival.estimated_arrival_time.slice(0, 5)
-        : ""
-    );
-    setEditNotes(arrival.notes || "");
-  }
-
-  function cancelEditArrival() {
-    setEditingArrivalId(null);
-  }
-
-  async function saveArrivalEdits(id: number) {
-    if (!editArrivalDate) {
-      alert("Please enter an arrival date.");
-      return;
-    }
-
-    const isCommercial = editArrivalMethod === "Commercial Flight";
-    const isPrivate = editArrivalMethod === "Private Aircraft";
-    const isFlight = isCommercial || isPrivate;
-
-    const updatePayload = {
-      arrival_method: editArrivalMethod,
-      airline: isCommercial || isPrivate ? editAirline.trim() || null : null,
-      flight_number: isCommercial ? editFlightNumber.trim() || null : null,
-      flight_origin: editFlightOrigin.trim() || null,
-      tail_number: isPrivate ? editTailNumber.trim() || null : null,
-      arrival_date: editArrivalDate,
-      estimated_arrival_time: editArrivalTime || null,
-      notes: editNotes.trim() || null,
-    };
-
-    setSavingArrivalEdit(true);
-
-    const { error } = await supabase
-      .from("player_arrivals")
-      .update(updatePayload)
-      .eq("id", id);
-
-    setSavingArrivalEdit(false);
+    setSaving(false);
 
     if (error) {
       alert(error.message);
       return;
     }
 
-    setArrivals((current) =>
-      current.map((arrival) =>
-        arrival.id === id
-          ? {
-              ...arrival,
-              ...updatePayload,
-            }
-          : arrival
-      )
+    alert(
+      existingFlight
+        ? `People added to existing ${flightLabel(existingFlight)} arrival.`
+        : "Arrival created."
     );
 
+    resetAddForm();
+    await loadData();
+  }
+
+  function beginEdit(arrival: Arrival) {
+    setEditingArrivalId(arrival.id);
+    setEditForm({
+      arrival_method: arrival.arrival_method,
+      airline: arrival.airline || "",
+      flight_number: arrival.flight_number || "",
+      flight_origin: arrival.flight_origin || "",
+      tail_number: arrival.tail_number || "",
+      arrival_date: arrival.arrival_date || "",
+      estimated_arrival_time:
+        arrival.estimated_arrival_time?.slice(0, 5) || "",
+      status: arrival.status || "Expected",
+      notes: arrival.notes || "",
+    });
+    setEditPersonIds(arrival.passengers.map((passenger) => passenger.id));
+  }
+
+  async function saveEdit() {
+    if (editingArrivalId === null) return;
+
+    if (editPersonIds.length === 0) {
+      alert("An arrival must have at least one person.");
+      return;
+    }
+
+    setSavingEdit(true);
+
+    const { error } = await supabase.rpc("save_arrival_flight", {
+      p_arrival_id: editingArrivalId,
+      p_arrival_method: editForm.arrival_method,
+      p_airline: editForm.airline || null,
+      p_flight_number:
+        editForm.arrival_method === "Commercial Flight"
+          ? normalizeFlightNumber(
+              editForm.airline,
+              editForm.flight_number
+            )
+          : null,
+      p_flight_origin: editForm.flight_origin || null,
+      p_tail_number:
+        editForm.arrival_method === "Private Aircraft"
+          ? editForm.tail_number
+          : null,
+      p_arrival_date: editForm.arrival_date,
+      p_estimated_arrival_time:
+        editForm.estimated_arrival_time || null,
+      p_status: editForm.status || "Expected",
+      p_notes: editForm.notes || null,
+      p_person_ids: editPersonIds,
+      p_replace_passengers: true,
+    });
+
+    setSavingEdit(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
     setEditingArrivalId(null);
+    await loadData();
   }
 
   async function deleteArrival(id: number) {
-    const confirmed = confirm("Delete this arrival record?");
-    if (!confirmed) return;
+    if (
+      !window.confirm(
+        "Delete this flight/arrival and remove everyone assigned to it?"
+      )
+    ) {
+      return;
+    }
 
     const { error } = await supabase
       .from("player_arrivals")
@@ -500,82 +752,83 @@ export default function PlayerArrivalsPage() {
       return;
     }
 
-    loadData();
-  }
-
-  function getTravelCode(arrival: Arrival) {
-    if (arrival.arrival_method === "Commercial Flight") {
-      return arrival.flight_number || "No flight #";
-    }
-
-    if (arrival.arrival_method === "Private Aircraft") {
-      return arrival.tail_number || "No tail #";
-    }
-
-    return "";
+    await loadData();
   }
 
   function ArrivalCard({
     arrival,
-    showDate = false,
+    showDate,
   }: {
     arrival: Arrival;
-    showDate?: boolean;
+    showDate: boolean;
   }) {
+    const activePassengers = arrival.passengers.filter(
+      (passenger) => !passenger.checked_out
+    );
+
     return (
-      <details className="border-b group">
-        <summary className="cursor-pointer list-none p-3 hover:bg-gray-50">
-          <div
-            className={
-              showDate
-                ? "grid grid-cols-[120px_1fr] md:grid-cols-[140px_1fr_180px_140px] gap-2 items-center"
-                : "grid grid-cols-[90px_1fr] md:grid-cols-[100px_1fr_180px_140px] gap-2 items-center"
-            }
-          >
-            <div className="text-[#1F4E1A]">
+      <details className="group border-b last:border-b-0">
+        <summary className="cursor-pointer list-none p-4 hover:bg-gray-50">
+          <div className="grid gap-2 md:grid-cols-[125px_150px_1fr_110px] md:items-center">
+            <div>
               {showDate && (
-                <div className="text-xs font-semibold text-gray-600">
+                <div className="text-xs font-semibold text-gray-500">
                   {formatDate(arrival.arrival_date)}
                 </div>
               )}
-
-              <div className="font-bold">
-                {formatTime(arrival.estimated_arrival_time) || "Time TBD"}
+              <div className="text-lg font-bold text-[#1F4E1A]">
+                {formatTime(arrival.estimated_arrival_time)}
               </div>
             </div>
 
-            <div className="font-semibold">
-              {arrival.player_first_name} {arrival.player_last_name}
+            <div>
+              <div className="font-bold">{flightLabel(arrival)}</div>
+              <div className="text-xs text-gray-500">
+                {arrival.arrival_method}
+              </div>
             </div>
 
-            <div className="text-sm text-gray-700">
-              {arrival.arrival_method}
+            <div>
+              <div className="font-semibold">
+                {activePassengers
+                  .map(
+                    (passenger) =>
+                      `${passenger.first_name} ${passenger.last_name}`
+                  )
+                  .join(", ") || "No people waiting"}
+              </div>
+              <div className="text-xs text-gray-500">
+                {arrival.flight_origin
+                  ? `From ${arrival.flight_origin}`
+                  : arrival.airline || ""}
+              </div>
             </div>
 
-            <div className="text-sm font-semibold text-gray-700">
-              {getTravelCode(arrival)}
+            <div className="text-sm font-bold text-gray-700">
+              {activePassengers.length} waiting
             </div>
           </div>
         </summary>
 
-        <div className="bg-gray-50 px-3 pb-4">
-          <div className="rounded border bg-white p-3">
-            <div className="mb-3 grid gap-2 text-sm md:grid-cols-2">
+        <div className="bg-gray-50 px-4 pb-4">
+          <div className="rounded border bg-white p-4">
+            <div className="grid gap-2 text-sm md:grid-cols-2 lg:grid-cols-4">
               <p>
                 <span className="font-semibold">Date:</span>{" "}
                 {formatDate(arrival.arrival_date)}
               </p>
-
               <p>
                 <span className="font-semibold">Time:</span>{" "}
-                {formatTime(arrival.estimated_arrival_time) || "TBD"}
+                {formatTime(arrival.estimated_arrival_time)}
               </p>
-
               <p>
                 <span className="font-semibold">Method:</span>{" "}
                 {arrival.arrival_method}
               </p>
-
+              <p>
+                <span className="font-semibold">Status:</span>{" "}
+                {arrival.status || "Expected"}
+              </p>
               {arrival.airline && (
                 <p>
                   <span className="font-semibold">
@@ -586,69 +839,86 @@ export default function PlayerArrivalsPage() {
                   {arrival.airline}
                 </p>
               )}
-
               {arrival.flight_number && (
                 <p>
-                  <span className="font-semibold">Flight #:</span>{" "}
+                  <span className="font-semibold">Flight:</span>{" "}
                   {arrival.flight_number}
                 </p>
               )}
-
-              {arrival.flight_origin && (
-                <p>
-                  <span className="font-semibold">Coming From:</span>{" "}
-                  {arrival.flight_origin}
-                </p>
-              )}
-
               {arrival.tail_number && (
                 <p>
-                  <span className="font-semibold">Tail #:</span>{" "}
+                  <span className="font-semibold">Tail:</span>{" "}
                   {arrival.tail_number}
                 </p>
               )}
+              {arrival.flight_origin && (
+                <p>
+                  <span className="font-semibold">From:</span>{" "}
+                  {arrival.flight_origin}
+                </p>
+              )}
             </div>
 
-            <div className="mb-3">
-              <p className="mb-1 text-xs font-semibold text-gray-500">
-                Notes
-              </p>
-              <p className="whitespace-pre-wrap text-sm">
-                {arrival.notes || "No notes"}
-              </p>
+            <div className="mt-4">
+              <div className="mb-2 font-semibold">
+                People on this arrival ({arrival.passengers.length})
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                {arrival.passengers.map((passenger) => (
+                  <div
+                    key={passenger.id}
+                    className={`flex items-center justify-between gap-3 rounded border p-3 ${
+                      passenger.checked_out
+                        ? "bg-gray-100 text-gray-500"
+                        : "bg-white"
+                    }`}
+                  >
+                    <div>
+                      <div className="font-semibold">
+                        {passenger.first_name} {passenger.last_name}
+                      </div>
+                      <div className="text-xs">
+                        {passenger.role || "No type"}
+                        {passenger.checked_out ? " — checked out" : ""}
+                      </div>
+                    </div>
+
+                    {!passenger.checked_out && (
+                      <Link
+                        href={`/check-out?personId=${passenger.id}&arrivalId=${arrival.id}`}
+                        className="rounded bg-[#367C2B] px-3 py-2 text-sm font-semibold text-white hover:bg-[#2e6e24]"
+                      >
+                        Check Out
+                      </Link>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="flex flex-wrap justify-end gap-2">
+            {arrival.notes && (
+              <div className="mt-4 rounded bg-gray-50 p-3 text-sm">
+                <div className="mb-1 font-semibold">Arrival Notes</div>
+                <div className="whitespace-pre-wrap">{arrival.notes}</div>
+              </div>
+            )}
+
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                onClick={() => beginEditArrival(arrival)}
-                className="rounded bg-[#FFDE00] px-4 py-2 font-bold text-[#1F4E1A] hover:bg-yellow-300"
+                onClick={() => beginEdit(arrival)}
+                className="rounded bg-[#FFDE00] px-4 py-2 font-bold text-[#1F4E1A]"
               >
-                Edit Arrival
+                Edit Flight & People
               </button>
-
-              {arrival.person_id ? (
-                <Link
-                  href={`/check-out?personId=${arrival.person_id}&arrivalId=${arrival.id}`}
-                  className="rounded bg-[#367C2B] px-4 py-2 text-center font-semibold text-white hover:bg-[#2e6e24]"
-                >
-                  Check Out
-                </Link>
-              ) : (
-                <button
-                  disabled
-                  className="cursor-not-allowed rounded bg-gray-100 px-4 py-2 text-gray-400"
-                >
-                  Check Out
-                </button>
-              )}
 
               <button
                 type="button"
                 onClick={() => deleteArrival(arrival.id)}
                 className="rounded bg-gray-200 px-4 py-2 hover:bg-gray-300"
               >
-                Delete
+                Delete Arrival
               </button>
             </div>
           </div>
@@ -657,444 +927,398 @@ export default function PlayerArrivalsPage() {
     );
   }
 
-  return (
-    <main className="min-h-screen bg-[#F5F5F5] p-4">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-3xl font-bold">Player Arrivals</h1>
+  function ArrivalList({
+    title,
+    records,
+    showDate,
+  }: {
+    title: string;
+    records: Arrival[];
+    showDate: boolean;
+  }) {
+    return (
+      <section className="mb-5">
+        <h2 className="mb-2 text-xl font-bold text-[#1F4E1A]">{title}</h2>
+        <div className="overflow-hidden rounded-lg border bg-white shadow-sm">
+          {records.length > 0 ? (
+            records.map((arrival) => (
+              <ArrivalCard
+                key={arrival.id}
+                arrival={arrival}
+                showDate={showDate}
+              />
+            ))
+          ) : (
+            <div className="p-4 text-gray-500">No arrivals found.</div>
+          )}
+        </div>
+      </section>
+    );
+  }
 
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href="/player-arrivals/flights"
-            className="rounded bg-[#FFDE00] px-4 py-2 font-bold text-[#1F4E1A] hover:bg-yellow-300"
-          >
-            MLI 48-Hour Flights
-          </Link>
+  return (
+    <main className="min-h-screen bg-[#F5F5F5] p-4 md:p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">Arrivals by Flight</h1>
+            <p className="mt-1 text-sm text-gray-600">
+              One arrival record can contain multiple players or staff.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/player-arrivals/flights"
+              className="rounded bg-[#FFDE00] px-4 py-2 font-bold text-[#1F4E1A]"
+            >
+              MLI 48-Hour Flights
+            </Link>
+            <button
+              type="button"
+              onClick={loadData}
+              className="rounded bg-[#1F4E1A] px-4 py-2 text-white"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <section className="mb-5 max-w-4xl rounded-lg border-t-4 border-[#367C2B] bg-white p-4 shadow">
+          <h2 className="mb-3 text-xl font-bold text-[#1F4E1A]">
+            Add Flight or Arrival
+          </h2>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <label className="mb-1 block font-semibold">
+                Arrival Method
+              </label>
+              <select
+                value={form.arrival_method}
+                onChange={(event) =>
+                  updateForm("arrival_method", event.target.value)
+                }
+                className="w-full rounded border bg-white p-3"
+              >
+                {ARRIVAL_METHODS.map((method) => (
+                  <option key={method} value={method}>
+                    {method}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1 block font-semibold">Status</label>
+              <input
+                value={form.status}
+                onChange={(event) =>
+                  updateForm("status", event.target.value)
+                }
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block font-semibold">
+                Arrival Date *
+              </label>
+              <input
+                type="date"
+                value={form.arrival_date}
+                onChange={(event) =>
+                  updateForm("arrival_date", event.target.value)
+                }
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            <div>
+              <label className="mb-1 block font-semibold">
+                Estimated Arrival Time
+              </label>
+              <input
+                type="time"
+                value={form.estimated_arrival_time}
+                onChange={(event) =>
+                  updateForm(
+                    "estimated_arrival_time",
+                    event.target.value
+                  )
+                }
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            {(form.arrival_method === "Commercial Flight" ||
+              form.arrival_method === "Private Aircraft") && (
+              <div>
+                <label className="mb-1 block font-semibold">
+                  {form.arrival_method === "Private Aircraft"
+                    ? "Operator"
+                    : "Airline"}
+                </label>
+                <input
+                  value={form.airline}
+                  onChange={(event) =>
+                    updateForm("airline", event.target.value)
+                  }
+                  className="w-full rounded border p-3"
+                />
+              </div>
+            )}
+
+            {form.arrival_method === "Commercial Flight" && (
+              <div>
+                <label className="mb-1 block font-semibold">
+                  Flight Number *
+                </label>
+                <input
+                  value={form.flight_number}
+                  onChange={(event) =>
+                    updateForm("flight_number", event.target.value)
+                  }
+                  placeholder="Example: DL4950"
+                  className="w-full rounded border p-3"
+                />
+              </div>
+            )}
+
+            {form.arrival_method === "Private Aircraft" && (
+              <div>
+                <label className="mb-1 block font-semibold">
+                  Tail Number
+                </label>
+                <input
+                  value={form.tail_number}
+                  onChange={(event) =>
+                    updateForm("tail_number", event.target.value)
+                  }
+                  placeholder="Optional when tail number is pending"
+                  className="w-full rounded border p-3"
+                />
+              </div>
+            )}
+
+            <div className="md:col-span-2">
+              <label className="mb-1 block font-semibold">
+                Coming From / Origin
+              </label>
+              <input
+                value={form.flight_origin}
+                onChange={(event) =>
+                  updateForm("flight_origin", event.target.value)
+                }
+                className="w-full rounded border p-3"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <PassengerPicker
+                people={people}
+                selectedIds={selectedPersonIds}
+                onChange={setSelectedPersonIds}
+                personArrivalLabels={personArrivalLabels}
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowNewPersonForm((current) => !current)}
+                className="mt-2 text-sm font-semibold text-[#1F4E1A] underline"
+              >
+                + Add a new person
+              </button>
+            </div>
+
+            {showNewPersonForm && (
+              <div className="md:col-span-2 rounded border-2 border-[#FFDE00] bg-[#FFDE00]/10 p-4">
+                <div className="mb-3 font-bold text-[#1F4E1A]">
+                  Add New Person
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <input
+                    value={newPersonFirstName}
+                    onChange={(event) =>
+                      setNewPersonFirstName(event.target.value)
+                    }
+                    placeholder="First name"
+                    className="rounded border bg-white p-3"
+                  />
+                  <input
+                    value={newPersonLastName}
+                    onChange={(event) =>
+                      setNewPersonLastName(event.target.value)
+                    }
+                    placeholder="Last name"
+                    className="rounded border bg-white p-3"
+                  />
+                  <select
+                    value={newPersonType}
+                    onChange={(event) =>
+                      setNewPersonType(event.target.value)
+                    }
+                    className="rounded border bg-white p-3"
+                  >
+                    {PERSON_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={newPersonPhone}
+                    onChange={(event) =>
+                      setNewPersonPhone(event.target.value)
+                    }
+                    placeholder="Phone"
+                    className="rounded border bg-white p-3"
+                  />
+                  <input
+                    value={newPersonEmail}
+                    onChange={(event) =>
+                      setNewPersonEmail(event.target.value)
+                    }
+                    placeholder="Email"
+                    type="email"
+                    className="rounded border bg-white p-3 md:col-span-2"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={saveNewPerson}
+                  disabled={savingNewPerson}
+                  className="mt-3 rounded bg-[#367C2B] px-4 py-2 font-semibold text-white disabled:opacity-50"
+                >
+                  {savingNewPerson
+                    ? "Saving Person..."
+                    : "Save and Add Person"}
+                </button>
+              </div>
+            )}
+
+            <div className="md:col-span-2">
+              <label className="mb-1 block font-semibold">Notes</label>
+              <textarea
+                value={form.notes}
+                onChange={(event) =>
+                  updateForm("notes", event.target.value)
+                }
+                rows={4}
+                className="w-full rounded border p-3"
+              />
+            </div>
+          </div>
+
+          {existingFlight && (
+            <div className="mt-4 rounded border border-orange-300 bg-orange-50 p-3 text-sm text-orange-900">
+              <span className="font-bold">
+                Existing flight found:
+              </span>{" "}
+              {flightLabel(existingFlight)} on{" "}
+              {formatDate(existingFlight.arrival_date)}. Saving will add the
+              selected people to that one record rather than creating a
+              duplicate.
+            </div>
+          )}
 
           <button
             type="button"
-            onClick={loadData}
-            className="rounded bg-[#1F4E1A] px-4 py-2 text-white"
+            onClick={saveArrival}
+            disabled={saving}
+            className="mt-4 w-full rounded bg-[#367C2B] px-4 py-3 font-bold text-white disabled:opacity-50"
           >
-            Refresh
+            {saving
+              ? "Saving..."
+              : existingFlight
+                ? "Add People to Existing Arrival"
+                : "Create Arrival"}
           </button>
-        </div>
-      </div>
-
-      <section className="bg-white rounded-lg shadow p-4 mb-4 border-t-4 border-[#367C2B] max-w-3xl">
-        <h2 className="text-xl font-bold text-[#1F4E1A] mb-3">
-          Add Arrival
-        </h2>
-
-        <label className="block font-semibold mb-1">Person</label>
-        <input
-          value={personSearch}
-          onChange={(e) => {
-            setPersonSearch(e.target.value);
-            setSelectedPerson(null);
-            clearArrivalEntryFields();
-          }}
-          placeholder="Type person name..."
-          className="border rounded p-3 w-full"
-        />
-
-        {!selectedPerson && personSearch && (
-          <div className="border rounded mt-2 mb-4 bg-white overflow-hidden">
-            {matchingPeople.length === 0 ? (
-              <div className="p-3">
-                <p className="text-gray-500 mb-2">No people found.</p>
-
-                <button
-                  onClick={openNewPersonForm}
-                  className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-2 rounded w-full"
-                >
-                  Add New Person
-                </button>
-              </div>
-            ) : (
-              <>
-                {matchingPeople.map((person) => (
-                  <button
-                    key={person.id}
-                    onClick={() => selectPersonForArrival(person)}
-                    className="block w-full text-left p-3 border-b hover:bg-gray-100"
-                  >
-                    <span className="font-semibold">
-                      {person.first_name} {person.last_name}
-                    </span>
-                    <span className="ml-2 text-xs text-gray-500">
-                      {person.role || "No type"}
-                    </span>
-                  </button>
-                ))}
-
-                <button
-                  onClick={openNewPersonForm}
-                  className="block w-full text-left p-3 bg-[#FFDE00]/20 text-[#1F4E1A] font-semibold hover:bg-[#FFDE00]/30"
-                >
-                  + Add New Person
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {showNewPersonForm && (
-          <div className="border-2 border-[#367C2B] rounded-lg p-4 my-4 bg-green-50">
-            <h3 className="font-bold text-lg text-[#1F4E1A] mb-3">
-              Add New Person
-            </h3>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <label className="block text-sm font-semibold mb-1">
-                  First Name *
-                </label>
-                <input
-                  value={newPersonFirstName}
-                  onChange={(e) => setNewPersonFirstName(e.target.value)}
-                  className="border rounded p-3 w-full"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1">
-                  Last Name *
-                </label>
-                <input
-                  value={newPersonLastName}
-                  onChange={(e) => setNewPersonLastName(e.target.value)}
-                  className="border rounded p-3 w-full"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1">
-                  Type of Person *
-                </label>
-                <select
-                  value={newPersonType}
-                  onChange={(e) => setNewPersonType(e.target.value)}
-                  className="border rounded p-3 w-full"
-                >
-                  {PERSON_TYPES.map((personType) => (
-                    <option key={personType} value={personType}>
-                      {personType}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold mb-1">
-                  Phone
-                </label>
-                <input
-                  value={newPersonPhone}
-                  onChange={(e) => setNewPersonPhone(e.target.value)}
-                  type="tel"
-                  className="border rounded p-3 w-full"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold mb-1">
-                  Email
-                </label>
-                <input
-                  value={newPersonEmail}
-                  onChange={(e) => setNewPersonEmail(e.target.value)}
-                  type="email"
-                  className="border rounded p-3 w-full"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                type="button"
-                onClick={cancelNewPerson}
-                className="bg-gray-200 hover:bg-gray-300 rounded px-4 py-2 font-semibold"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={saveNewPerson}
-                className="bg-[#367C2B] hover:bg-[#2e6e24] text-white rounded px-4 py-2 font-semibold"
-              >
-                Save Person
-              </button>
-            </div>
-          </div>
-        )}
-
-        {selectedPerson && (
-          <div className="bg-[#FFDE00]/20 border border-[#FFDE00] rounded p-3 my-4">
-            <div>
-              Selected: {selectedPerson.first_name} {selectedPerson.last_name}
-              <span className="ml-2 text-sm text-gray-600">
-                ({selectedPerson.role || "No type"})
-              </span>
-            </div>
-
-            {existingArrivalId !== null && (
-              <div className="mt-2 rounded border border-[#367C2B] bg-green-50 p-2 text-sm text-[#1F4E1A]">
-                This person already has an arrival. The existing information has
-                been loaded into the form, and saving will update that record
-                instead of creating another one.
-                {existingArrivalCount > 1 && (
-                  <span className="mt-1 block font-semibold text-red-700">
-                    {existingArrivalCount} arrival records were found. Saving
-                    will keep one updated record and remove the duplicates.
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        <label className="block font-semibold mb-1">Arrival Method</label>
-        <select
-          value={arrivalMethod}
-          onChange={(e) => setArrivalMethod(e.target.value)}
-          className="border rounded p-3 w-full mb-4"
-        >
-          {ARRIVAL_METHODS.map((method) => (
-            <option key={method} value={method}>
-              {method}
-            </option>
-          ))}
-        </select>
-
-        {arrivalMethod === "Commercial Flight" && (
-          <div className="grid gap-3 md:grid-cols-3">
-            <div>
-              <label className="block font-semibold mb-1">Airline</label>
-              <input
-                value={airline}
-                onChange={(e) => setAirline(e.target.value)}
-                placeholder="Example: American"
-                className="border rounded p-3 w-full mb-4"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1">Flight Number</label>
-              <input
-                value={flightNumber}
-                onChange={(e) => setFlightNumber(e.target.value)}
-                placeholder="Example: AA 1234"
-                className="border rounded p-3 w-full mb-4"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1">Coming From</label>
-              <input
-                value={flightOrigin}
-                onChange={(e) => setFlightOrigin(e.target.value)}
-                placeholder="Example: Chicago ORD"
-                className="border rounded p-3 w-full mb-4"
-              />
-            </div>
-          </div>
-        )}
-
-        {arrivalMethod === "Private Aircraft" && (
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="block font-semibold mb-1">Tail Number</label>
-              <input
-                value={tailNumber}
-                onChange={(e) => setTailNumber(e.target.value)}
-                placeholder="Example: N123AB"
-                className="border rounded p-3 w-full mb-4"
-              />
-            </div>
-
-            <div>
-              <label className="block font-semibold mb-1">Coming From</label>
-              <input
-                value={flightOrigin}
-                onChange={(e) => setFlightOrigin(e.target.value)}
-                placeholder="Example: Scottsdale SDL"
-                className="border rounded p-3 w-full mb-4"
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <div>
-            <label className="block font-semibold mb-1">Arrival Date</label>
-            <input
-              type="date"
-              value={arrivalDate}
-              onChange={(e) => setArrivalDate(e.target.value)}
-              className="border rounded p-3 w-full mb-4"
-            />
-          </div>
-
-          <div>
-            <label className="block font-semibold mb-1">
-              Estimated Arrival Time
-            </label>
-            <input
-              type="time"
-              value={arrivalTime}
-              onChange={(e) => setArrivalTime(e.target.value)}
-              className="border rounded p-3 w-full mb-4"
-            />
-          </div>
-        </div>
-
-        <label className="block font-semibold mb-1">Notes</label>
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Optional notes"
-          className="border rounded p-3 w-full mb-4"
-        />
-
-        <button
-          type="button"
-          onClick={addArrival}
-          disabled={savingArrival}
-          className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded w-full font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {savingArrival
-            ? "Saving..."
-            : existingArrivalId !== null
-              ? "Update Existing Arrival"
-              : "Add Arrival"}
-        </button>
-      </section>
-
-      <div className="grid gap-4 mb-4">
-        <section className="bg-white rounded-lg shadow overflow-hidden border-t-4 border-[#367C2B]">
-          <div className="p-4 bg-white">
-            <h2 className="text-2xl font-bold text-[#1F4E1A]">
-              Today&apos;s Arrivals
-            </h2>
-            <p className="text-sm text-gray-600">{formatDate(today)}</p>
-          </div>
-
-          {todayArrivals.length === 0 ? (
-            <div className="p-4 text-gray-500">
-              No active arrivals scheduled today.
-            </div>
-          ) : (
-            todayArrivals.map((arrival) => (
-              <ArrivalCard key={arrival.id} arrival={arrival} />
-            ))
-          )}
         </section>
 
-        <section className="bg-white rounded-lg shadow overflow-hidden border-t-4 border-[#FFDE00]">
-          <div className="p-4 bg-white">
-            <h2 className="text-2xl font-bold text-[#1F4E1A]">
-              Tomorrow&apos;s Arrivals
-            </h2>
-            <p className="text-sm text-gray-600">{formatDate(tomorrow)}</p>
-          </div>
-
-          {tomorrowArrivals.length === 0 ? (
-            <div className="p-4 text-gray-500">
-              No active arrivals scheduled tomorrow.
-            </div>
-          ) : (
-            tomorrowArrivals.map((arrival) => (
-              <ArrivalCard key={arrival.id} arrival={arrival} />
-            ))
-          )}
-        </section>
-      </div>
-
-      <div className="bg-white rounded-lg shadow p-4 mb-4 border-t-4 border-[#FFDE00]">
-        <h2 className="text-xl font-bold text-[#1F4E1A] mb-3">
-          All Active Arrivals
-        </h2>
-
-        <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+        <section className="mb-5 grid gap-3 rounded-lg border bg-white p-4 shadow-sm md:grid-cols-[1fr_240px]">
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search player, flight, origin, tail number, notes..."
-            className="border rounded p-3 w-full"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search flight, tail number, origin, or person..."
+            className="rounded border p-3"
           />
-
           <select
             value={methodFilter}
-            onChange={(e) => setMethodFilter(e.target.value)}
-            className="border rounded p-3 w-full"
+            onChange={(event) => setMethodFilter(event.target.value)}
+            className="rounded border bg-white p-3"
           >
-            <option value="">All methods</option>
+            <option value="">All arrival methods</option>
             {ARRIVAL_METHODS.map((method) => (
               <option key={method} value={method}>
                 {method}
               </option>
             ))}
           </select>
-        </div>
-      </div>
+        </section>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {filteredArrivals.map((arrival) => (
-          <ArrivalCard
-            key={arrival.id}
-            arrival={arrival}
-            showDate
-          />
-        ))}
-
-        {filteredArrivals.length === 0 && (
-          <div className="p-4 text-gray-500">No active arrivals found.</div>
+        {loading ? (
+          <div className="rounded bg-white p-8 text-center text-gray-500">
+            Loading arrivals...
+          </div>
+        ) : (
+          <>
+            <ArrivalList
+              title="Today's Arrivals"
+              records={todayArrivals}
+              showDate={false}
+            />
+            <ArrivalList
+              title="Tomorrow's Arrivals"
+              records={tomorrowArrivals}
+              showDate={false}
+            />
+            <ArrivalList
+              title="All Active Arrivals"
+              records={filteredArrivals}
+              showDate
+            />
+          </>
         )}
-      </div>
 
-      {editingArrivalId !== null && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-3 md:p-6"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="edit-arrival-title"
-        >
-          <div className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b bg-[#1F4E1A] px-4 py-4 text-white md:px-6">
-              <div>
-                <h2 id="edit-arrival-title" className="text-xl font-bold">
-                  Edit Arrival
-                </h2>
-                <p className="mt-1 text-sm text-white/85">
-                  {arrivals.find((arrival) => arrival.id === editingArrivalId)
-                    ?.player_first_name}{" "}
-                  {arrivals.find((arrival) => arrival.id === editingArrivalId)
-                    ?.player_last_name}
-                </p>
+        {editingArrivalId !== null && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+              <div className="flex items-center justify-between bg-[#1F4E1A] px-5 py-4 text-white">
+                <div>
+                  <h2 className="text-xl font-bold">
+                    Edit Flight & Passenger Manifest
+                  </h2>
+                  <p className="text-sm text-white/80">
+                    Changes apply to everyone on this arrival.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingArrivalId(null)}
+                  className="px-3 py-1 text-2xl"
+                >
+                  ×
+                </button>
               </div>
 
-              <button
-                type="button"
-                onClick={cancelEditArrival}
-                disabled={savingArrivalEdit}
-                className="rounded px-3 py-1 text-2xl leading-none hover:bg-white/15 disabled:opacity-50"
-                aria-label="Close editor"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="overflow-y-auto p-4 md:p-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block font-semibold">
-                    Arrival Method
-                  </label>
+              <div className="overflow-y-auto p-5">
+                <div className="grid gap-3 md:grid-cols-2">
                   <select
-                    value={editArrivalMethod}
-                    onChange={(e) => setEditArrivalMethod(e.target.value)}
-                    className="w-full rounded border bg-white p-3"
+                    value={editForm.arrival_method}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "arrival_method",
+                        event.target.value
+                      )
+                    }
+                    className="rounded border bg-white p-3"
                   >
                     {ARRIVAL_METHODS.map((method) => (
                       <option key={method} value={method}>
@@ -1102,131 +1326,138 @@ export default function PlayerArrivalsPage() {
                       </option>
                     ))}
                   </select>
-                </div>
 
-                <div>
-                  <label className="mb-1 block font-semibold">
-                    Arrival Date
-                  </label>
+                  <input
+                    value={editForm.status}
+                    onChange={(event) =>
+                      updateEditForm("status", event.target.value)
+                    }
+                    placeholder="Status"
+                    className="rounded border p-3"
+                  />
+
                   <input
                     type="date"
-                    value={editArrivalDate}
-                    onChange={(e) => setEditArrivalDate(e.target.value)}
-                    className="w-full rounded border p-3"
+                    value={editForm.arrival_date}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "arrival_date",
+                        event.target.value
+                      )
+                    }
+                    className="rounded border p-3"
                   />
-                </div>
 
-                <div>
-                  <label className="mb-1 block font-semibold">
-                    Estimated Arrival Time
-                  </label>
                   <input
                     type="time"
-                    value={editArrivalTime}
-                    onChange={(e) => setEditArrivalTime(e.target.value)}
-                    className="w-full rounded border p-3"
+                    value={editForm.estimated_arrival_time}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "estimated_arrival_time",
+                        event.target.value
+                      )
+                    }
+                    className="rounded border p-3"
                   />
-                  <p className="mt-1 text-xs text-gray-500">
-                    This may be left blank when the time is still TBD.
-                  </p>
-                </div>
 
-                {(editArrivalMethod === "Commercial Flight" ||
-                  editArrivalMethod === "Private Aircraft") && (
-                  <div>
-                    <label className="mb-1 block font-semibold">
-                      {editArrivalMethod === "Private Aircraft"
-                        ? "Operator"
-                        : "Airline"}
-                    </label>
+                  {(editForm.arrival_method === "Commercial Flight" ||
+                    editForm.arrival_method === "Private Aircraft") && (
                     <input
-                      value={editAirline}
-                      onChange={(e) => setEditAirline(e.target.value)}
-                      className="w-full rounded border p-3"
-                      placeholder={
-                        editArrivalMethod === "Private Aircraft"
-                          ? "Example: NetJets"
-                          : "Example: American"
+                      value={editForm.airline}
+                      onChange={(event) =>
+                        updateEditForm("airline", event.target.value)
                       }
+                      placeholder={
+                        editForm.arrival_method === "Private Aircraft"
+                          ? "Operator"
+                          : "Airline"
+                      }
+                      className="rounded border p-3"
                     />
-                  </div>
-                )}
+                  )}
 
-                {editArrivalMethod === "Commercial Flight" && (
-                  <div>
-                    <label className="mb-1 block font-semibold">
-                      Flight Number
-                    </label>
+                  {editForm.arrival_method === "Commercial Flight" && (
                     <input
-                      value={editFlightNumber}
-                      onChange={(e) => setEditFlightNumber(e.target.value)}
-                      className="w-full rounded border p-3"
-                      placeholder="Example: AA4034"
+                      value={editForm.flight_number}
+                      onChange={(event) =>
+                        updateEditForm(
+                          "flight_number",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Flight number"
+                      className="rounded border p-3"
                     />
-                  </div>
-                )}
+                  )}
 
-                {editArrivalMethod === "Private Aircraft" && (
-                  <div>
-                    <label className="mb-1 block font-semibold">
-                      Tail Number
-                    </label>
+                  {editForm.arrival_method === "Private Aircraft" && (
                     <input
-                      value={editTailNumber}
-                      onChange={(e) => setEditTailNumber(e.target.value)}
-                      className="w-full rounded border p-3"
-                      placeholder="Example: N444AM"
+                      value={editForm.tail_number}
+                      onChange={(event) =>
+                        updateEditForm(
+                          "tail_number",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Tail number"
+                      className="rounded border p-3"
                     />
-                  </div>
-                )}
+                  )}
 
-                <div className="md:col-span-2">
-                  <label className="mb-1 block font-semibold">
-                    Coming From / Origin
-                  </label>
                   <input
-                    value={editFlightOrigin}
-                    onChange={(e) => setEditFlightOrigin(e.target.value)}
-                    className="w-full rounded border p-3"
-                    placeholder="Example: Chicago ORD"
+                    value={editForm.flight_origin}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "flight_origin",
+                        event.target.value
+                      )
+                    }
+                    placeholder="Origin"
+                    className="rounded border p-3 md:col-span-2"
                   />
-                </div>
 
-                <div className="md:col-span-2">
-                  <label className="mb-1 block font-semibold">Notes</label>
+                  <div className="md:col-span-2">
+                    <PassengerPicker
+                      people={people}
+                      selectedIds={editPersonIds}
+                      onChange={setEditPersonIds}
+                      personArrivalLabels={personArrivalLabels}
+                    />
+                  </div>
+
                   <textarea
-                    value={editNotes}
-                    onChange={(e) => setEditNotes(e.target.value)}
-                    rows={5}
-                    className="w-full rounded border p-3"
-                    placeholder="Party size, luggage, vehicle request, pickup details..."
+                    value={editForm.notes}
+                    onChange={(event) =>
+                      updateEditForm("notes", event.target.value)
+                    }
+                    rows={4}
+                    placeholder="Arrival notes"
+                    className="rounded border p-3 md:col-span-2"
                   />
                 </div>
               </div>
-            </div>
 
-            <div className="flex flex-wrap justify-end gap-2 border-t bg-gray-50 px-4 py-4 md:px-6">
-              <button
-                type="button"
-                onClick={cancelEditArrival}
-                disabled={savingArrivalEdit}
-                className="rounded bg-gray-200 px-5 py-3 font-semibold hover:bg-gray-300 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                onClick={() => saveArrivalEdits(editingArrivalId)}
-                disabled={savingArrivalEdit}
-                className="rounded bg-[#367C2B] px-5 py-3 font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {savingArrivalEdit ? "Saving..." : "Save Arrival"}
-              </button>
+              <div className="flex justify-end gap-2 border-t bg-gray-50 p-4">
+                <button
+                  type="button"
+                  onClick={() => setEditingArrivalId(null)}
+                  className="rounded bg-gray-200 px-5 py-3 font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={savingEdit}
+                  className="rounded bg-[#367C2B] px-5 py-3 font-semibold text-white disabled:opacity-50"
+                >
+                  {savingEdit ? "Saving..." : "Save Flight"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </main>
   );
 }
