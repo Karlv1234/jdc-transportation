@@ -5,16 +5,10 @@ import { supabase } from "../../src/lib/supabase";
 
 const ROLE_OPTIONS = [
   "Player",
-  "Alternate",
-  "PGA Staff",
-  "Tournament Staff",
-  "Transportation Staff",
-  "Misc",  "Player",
   "PGA Staff",
   "Tournament Staff",
   "Transportation Staff",
   "Misc",
-
 ];
 
 type Person = {
@@ -54,6 +48,9 @@ export default function PeoplePage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [editingRolePersonId, setEditingRolePersonId] = useState<number | null>(null);
+  const [editingRole, setEditingRole] = useState("");
+  const [savingRolePersonId, setSavingRolePersonId] = useState<number | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -189,6 +186,47 @@ export default function PeoplePage() {
 
     closeAddForm();
     await loadData();
+  }
+
+  function beginEditRole(person: Person) {
+    setEditingRolePersonId(person.id);
+    setEditingRole(person.role || "Misc");
+  }
+
+  function cancelEditRole() {
+    setEditingRolePersonId(null);
+    setEditingRole("");
+  }
+
+  async function savePersonRole(personId: number) {
+    if (!editingRole) {
+      alert("Please choose a person type.");
+      return;
+    }
+
+    setSavingRolePersonId(personId);
+
+    const { error } = await supabase
+      .from("people")
+      .update({ role: editingRole })
+      .eq("id", personId);
+
+    setSavingRolePersonId(null);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    setPeople((current) =>
+      current.map((person) =>
+        person.id === personId
+          ? { ...person, role: editingRole }
+          : person
+      )
+    );
+
+    cancelEditRole();
   }
 
   return (
@@ -380,12 +418,13 @@ export default function PeoplePage() {
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border bg-white">
-          <div className="hidden grid-cols-[1.3fr_1fr_1fr_1fr_1fr] gap-3 bg-gray-100 px-4 py-3 text-sm font-bold md:grid">
+          <div className="hidden grid-cols-[1.3fr_1.1fr_1fr_1fr_1fr_120px] gap-3 bg-gray-100 px-4 py-3 text-sm font-bold md:grid">
             <div>Name</div>
             <div>Type</div>
             <div>Phone</div>
             <div>Email</div>
             <div>Car Status</div>
+            <div>Action</div>
           </div>
 
           {filteredPeople.map((person) => {
@@ -397,7 +436,7 @@ export default function PeoplePage() {
                 key={person.id}
                 className="border-t px-4 py-4 first:border-t-0"
               >
-                <div className="grid gap-2 md:grid-cols-[1.3fr_1fr_1fr_1fr_1fr] md:gap-3">
+                <div className="grid gap-2 md:grid-cols-[1.3fr_1.1fr_1fr_1fr_1fr_120px] md:items-start md:gap-3">
                   <div>
                     <div className="font-bold text-[#1F4E1A]">
                       {person.first_name} {person.last_name}
@@ -413,7 +452,22 @@ export default function PeoplePage() {
                     <span className="mr-2 text-xs font-semibold text-gray-500 md:hidden">
                       Type:
                     </span>
-                    {person.role || "—"}
+
+                    {editingRolePersonId === person.id ? (
+                      <select
+                        value={editingRole}
+                        onChange={(event) => setEditingRole(event.target.value)}
+                        className="w-full rounded border bg-white p-2"
+                      >
+                        {ROLE_OPTIONS.map((role) => (
+                          <option key={role} value={role}>
+                            {role}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span>{person.role || "—"}</span>
+                    )}
                   </div>
 
                   <div>
@@ -443,6 +497,38 @@ export default function PeoplePage() {
                       </span>
                     ) : (
                       <span className="text-gray-500">No car checked out</span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 md:justify-end">
+                    {editingRolePersonId === person.id ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => savePersonRole(person.id)}
+                          disabled={savingRolePersonId === person.id}
+                          className="rounded bg-[#367C2B] px-3 py-2 text-sm font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {savingRolePersonId === person.id ? "Saving..." : "Save"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={cancelEditRole}
+                          disabled={savingRolePersonId === person.id}
+                          className="rounded bg-gray-200 px-3 py-2 text-sm font-semibold hover:bg-gray-300 disabled:opacity-60"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => beginEditRole(person)}
+                        className="rounded bg-[#FFDE00] px-3 py-2 text-sm font-bold text-[#1F4E1A] hover:bg-yellow-300"
+                      >
+                        Edit Type
+                      </button>
                     )}
                   </div>
                 </div>
