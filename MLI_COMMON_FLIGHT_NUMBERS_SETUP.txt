@@ -1,0 +1,17 @@
+MLI COMMON FLIGHT NUMBER UPDATE
+
+Replace:
+app/api/mli-arrivals/route.ts
+app/player-arrivals/flights/page.tsx
+
+Behavior:
+- Uses FlightAware codeshares_iata to show the passenger-facing marketing
+  flight number, such as UA, AA, DL, or G4.
+- Example: an OO/SkyWest operating flight displays as United UA#### when
+  FlightAware lists the United codeshare.
+- Keeps the regional operating flight number visible in expanded details.
+- Includes a route-based fallback for SkyWest flights when no codeshare is
+  returned:
+    ORD or DEN -> United
+    ATL, DTW, or MSP -> Delta
+    CLT, DFW, or PHX -> American

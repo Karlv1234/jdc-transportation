@@ -5,16 +5,10 @@ import { supabase } from "../../src/lib/supabase";
 
 const ROLE_OPTIONS = [
   "Player",
-  "Alternate",
-  "PGA Staff",
-  "Tournament Staff",
-  "Transportation Staff",
-  "Misc",  "Player",
   "PGA Staff",
   "Tournament Staff",
   "Transportation Staff",
   "Misc",
-
 ];
 
 type Vehicle = {
@@ -373,67 +367,19 @@ export default function CheckOutPage() {
   async function submitCheckout() {
     if (!selectedVehicle) return alert("Please select a car.");
     if (!selectedPerson) return alert("Please select a person.");
-    if (!checkedOutBy.trim()) {
-      return alert("Please enter who checked this out.");
-    }
-
-    let checkoutPerson = selectedPerson;
-
-    const normalizedRole = (checkoutPerson.role || "")
-      .trim()
-      .toLowerCase();
-
-    const isAlternate =
-      normalizedRole === "alternate" || normalizedRole === "alternates";
-
-    if (isAlternate) {
-      const addedToField = window.confirm(
-        `${checkoutPerson.first_name} ${checkoutPerson.last_name} is marked as an Alternate.\n\nHas this player been added to the field?`
-      );
-
-      if (!addedToField) {
-        alert(
-          "This alternate cannot receive a courtesy car until they have been added to the field."
-        );
-        return;
-      }
-
-      const { data: promotedPerson, error: roleError } = await supabase
-        .from("people")
-        .update({ role: "Player" })
-        .eq("id", checkoutPerson.id)
-        .select("id, first_name, last_name, phone, email, role, notes")
-        .single();
-
-      if (roleError || !promotedPerson) {
-        alert(
-          roleError?.message ||
-            "The player could not be changed from Alternate to Player."
-        );
-        return;
-      }
-
-      checkoutPerson = promotedPerson as Person;
-
-      setSelectedPerson(checkoutPerson);
-      setPeople((current) =>
-        current.map((person) =>
-          person.id === checkoutPerson.id ? checkoutPerson : person
-        )
-      );
-    }
+    if (!checkedOutBy.trim()) return alert("Please enter who checked this out.");
 
     const now = new Date().toISOString();
     const startLocation = selectedVehicle.current_location || "Unknown";
 
     const { error: checkoutError } = await supabase.from("checkouts").insert({
       vehicle_id: selectedVehicle.id,
-      person_id: checkoutPerson.id,
+      person_id: selectedPerson.id,
       car_number: selectedVehicle.car_number,
-      person_first_name: checkoutPerson.first_name,
-      person_last_name: checkoutPerson.last_name,
-      phone: checkoutPerson.phone,
-      email: checkoutPerson.email,
+      person_first_name: selectedPerson.first_name,
+      person_last_name: selectedPerson.last_name,
+      phone: selectedPerson.phone,
+      email: selectedPerson.email,
       on_behalf_of: onBehalfOf,
       checked_out_by: checkedOutBy,
       time_out: now,
@@ -819,16 +765,6 @@ export default function CheckOutPage() {
           </div>
         )}
 
-        {selectedPerson &&
-          ["alternate", "alternates"].includes(
-            (selectedPerson.role || "").trim().toLowerCase()
-          ) && (
-            <div className="mb-4 rounded border-2 border-red-600 bg-red-50 p-3 font-semibold text-red-800">
-              Alternate - this person cannot receive a car unless they have
-              been added to the field. Checkout will ask for confirmation and
-              then change their type to Player.
-            </div>
-          )}
         <label className="block font-semibold mb-1">On Behalf Of</label>
         <input
           value={onBehalfOf}

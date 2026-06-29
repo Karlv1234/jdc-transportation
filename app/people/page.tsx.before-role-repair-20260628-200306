@@ -15,8 +15,6 @@ const ROLE_OPTIONS = [
   "Transportation Staff",
   "Misc",
 
-];
-
 type Person = {
   id: number;
   first_name: string;

@@ -15,8 +15,6 @@ const ROLE_OPTIONS = [
   "Transportation Staff",
   "Misc",
 
-];
-
 type Vehicle = {
   id: number;
   car_number: number;

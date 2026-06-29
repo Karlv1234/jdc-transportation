@@ -1,0 +1,24 @@
+EVAC AND SHUTTLE VEHICLE STATUS UPDATE
+
+Replace:
+app/cars/page.tsx
+app/dashboard/page.tsx
+
+New separate vehicle statuses:
+- Evac
+- Shuttle
+
+Cars page:
+- Both statuses appear in the individual status dropdown.
+- Both statuses appear in the bulk status dropdown.
+- Evac uses a red badge.
+- Shuttle uses a blue badge.
+- Evac and Shuttle cars do not show Check Out because only Available cars
+  can be checked out.
+
+Dashboard:
+- Adds separate Evac and Shuttle count cards.
+- Clicking either card lists all cars with that status.
+- Status badges use the same red and blue colors.
+
+No SQL migration is required because the vehicle status column stores text.

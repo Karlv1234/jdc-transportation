@@ -1,0 +1,18 @@
+RETURN LOT CATEGORY UPDATE
+
+1. Run add-return-lot-category-to-vehicles.sql in the Supabase SQL Editor.
+
+2. Replace:
+   app/cars/page.tsx
+   app/check-in/page.tsx
+
+3. The Cars page now:
+   - Displays Return Lot Category beside Dealership.
+   - Includes Return Lot Category in search.
+   - Includes Return Lot Category in the downloaded CSV.
+
+4. The Check In page now displays both:
+   - Dealership
+   - Return Lot Category
+
+5. No existing vehicle, checkout, location, or status data is changed.

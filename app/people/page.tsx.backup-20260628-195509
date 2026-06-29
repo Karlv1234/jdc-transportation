@@ -5,16 +5,10 @@ import { supabase } from "../../src/lib/supabase";
 
 const ROLE_OPTIONS = [
   "Player",
-  "Alternate",
-  "PGA Staff",
-  "Tournament Staff",
-  "Transportation Staff",
-  "Misc",  "Player",
   "PGA Staff",
   "Tournament Staff",
   "Transportation Staff",
   "Misc",
-
 ];
 
 type Person = {

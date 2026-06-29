@@ -1,0 +1,42 @@
+JDC MLI 48-HOUR FLIGHT BOARD SETUP
+
+FILES
+1. app/api/mli-arrivals/route.ts
+2. app/player-arrivals/flights/page.tsx
+3. app/player-arrivals/page.tsx
+
+VERCEL ENVIRONMENT VARIABLE
+Name:
+FLIGHTAWARE_API_KEY
+
+Value:
+Your FlightAware AeroAPI key
+
+Add it under:
+Vercel Project > Settings > Environment Variables
+
+Enable it for:
+Production
+Preview
+Development
+
+After adding the key, redeploy the project.
+
+LOCAL DEVELOPMENT
+Create or edit this root-level file:
+.env.local
+
+Add:
+FLIGHTAWARE_API_KEY=your_key_here
+
+Do not use NEXT_PUBLIC_ and do not commit the API key.
+
+ROUTES
+Flight board:
+https://jdc-transportation.vercel.app/player-arrivals/flights
+
+Protected API route:
+https://jdc-transportation.vercel.app/api/mli-arrivals
+
+The page refreshes every 15 minutes. The server response is cached for five
+minutes to reduce repeated paid API calls.
