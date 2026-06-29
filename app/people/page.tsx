@@ -5,6 +5,7 @@ import { supabase } from "../../src/lib/supabase";
 
 const ROLE_OPTIONS = [
   "Player",
+  "Withdrawn Player",
   "PGA Staff",
   "Tournament Staff",
   "Transportation Staff",
@@ -465,6 +466,10 @@ export default function PeoplePage() {
                           </option>
                         ))}
                       </select>
+                    ) : person.role === "Withdrawn Player" ? (
+                      <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-sm font-bold text-red-800">
+                        Withdrawn Player
+                      </span>
                     ) : (
                       <span>{person.role || "—"}</span>
                     )}

@@ -5,16 +5,11 @@ import { supabase } from "../../src/lib/supabase";
 
 const ROLE_OPTIONS = [
   "Player",
-  "Alternate",
-  "PGA Staff",
-  "Tournament Staff",
-  "Transportation Staff",
-  "Misc",  "Player",
+  "Withdrawn Player",
   "PGA Staff",
   "Tournament Staff",
   "Transportation Staff",
   "Misc",
-
 ];
 
 type Vehicle = {
@@ -370,57 +365,22 @@ export default function CheckOutPage() {
     cancelNewPerson();
   }
 
+  function isWithdrawnPlayer(person: Person | null) {
+    return person?.role === "Withdrawn Player";
+  }
+
   async function submitCheckout() {
     if (!selectedVehicle) return alert("Please select a car.");
     if (!selectedPerson) return alert("Please select a person.");
-    if (!checkedOutBy.trim()) {
-      return alert("Please enter who checked this out.");
-    }
+    if (!checkedOutBy.trim()) return alert("Please enter who checked this out.");
 
-    let checkoutPerson = selectedPerson;
-
-    const normalizedRole = (checkoutPerson.role || "")
-      .trim()
-      .toLowerCase();
-
-    const isAlternate =
-      normalizedRole === "alternate" || normalizedRole === "alternates";
-
-    if (isAlternate) {
-      const addedToField = window.confirm(
-        `${checkoutPerson.first_name} ${checkoutPerson.last_name} is marked as an Alternate.\n\nHas this player been added to the field?`
-      );
-
-      if (!addedToField) {
-        alert(
-          "This alternate cannot receive a courtesy car until they have been added to the field."
-        );
-        return;
-      }
-
-      const { data: promotedPerson, error: roleError } = await supabase
-        .from("people")
-        .update({ role: "Player" })
-        .eq("id", checkoutPerson.id)
-        .select("id, first_name, last_name, phone, email, role, notes")
-        .single();
-
-      if (roleError || !promotedPerson) {
-        alert(
-          roleError?.message ||
-            "The player could not be changed from Alternate to Player."
-        );
-        return;
-      }
-
-      checkoutPerson = promotedPerson as Person;
-
-      setSelectedPerson(checkoutPerson);
-      setPeople((current) =>
-        current.map((person) =>
-          person.id === checkoutPerson.id ? checkoutPerson : person
-        )
-      );
+    if (
+      isWithdrawnPlayer(selectedPerson) &&
+      !window.confirm(
+        `WARNING: ${selectedPerson.first_name} ${selectedPerson.last_name} is marked as a Withdrawn Player and should not receive a car.\n\nOnly continue if this checkout has been specifically approved.`
+      )
+    ) {
+      return;
     }
 
     const now = new Date().toISOString();
@@ -428,12 +388,12 @@ export default function CheckOutPage() {
 
     const { error: checkoutError } = await supabase.from("checkouts").insert({
       vehicle_id: selectedVehicle.id,
-      person_id: checkoutPerson.id,
+      person_id: selectedPerson.id,
       car_number: selectedVehicle.car_number,
-      person_first_name: checkoutPerson.first_name,
-      person_last_name: checkoutPerson.last_name,
-      phone: checkoutPerson.phone,
-      email: checkoutPerson.email,
+      person_first_name: selectedPerson.first_name,
+      person_last_name: selectedPerson.last_name,
+      phone: selectedPerson.phone,
+      email: selectedPerson.email,
       on_behalf_of: onBehalfOf,
       checked_out_by: checkedOutBy,
       time_out: now,
@@ -792,17 +752,36 @@ export default function CheckOutPage() {
         )}
 
         {selectedPerson && (
-          <div className="my-4 flex items-start justify-between gap-3 rounded border border-[#FFDE00] bg-[#FFDE00]/20 p-3">
+          <div
+            className={`my-4 flex items-start justify-between gap-3 rounded border p-3 ${
+              isWithdrawnPlayer(selectedPerson)
+                ? "border-red-600 bg-red-50"
+                : "border-[#FFDE00] bg-[#FFDE00]/20"
+            }`}
+          >
             <div>
               <div className="font-semibold">
                 Selected: {selectedPerson.first_name}{" "}
                 {selectedPerson.last_name}
               </div>
-              <div className="text-sm text-gray-600">
+              <div
+                className={`text-sm ${
+                  isWithdrawnPlayer(selectedPerson)
+                    ? "font-bold text-red-800"
+                    : "text-gray-600"
+                }`}
+              >
                 {selectedPerson.role || "Misc"}
                 {selectedPerson.phone ? ` — ${selectedPerson.phone}` : ""}
                 {selectedPerson.email ? ` — ${selectedPerson.email}` : ""}
               </div>
+
+              {isWithdrawnPlayer(selectedPerson) && (
+                <div className="mt-2 rounded border border-red-500 bg-red-100 p-3 text-sm font-bold text-red-900">
+                  ⚠ WARNING: This player has withdrawn and should not receive a
+                  vehicle. Continuing will require an additional confirmation.
+                </div>
+              )}
             </div>
 
             <button
@@ -819,16 +798,6 @@ export default function CheckOutPage() {
           </div>
         )}
 
-        {selectedPerson &&
-          ["alternate", "alternates"].includes(
-            (selectedPerson.role || "").trim().toLowerCase()
-          ) && (
-            <div className="mb-4 rounded border-2 border-red-600 bg-red-50 p-3 font-semibold text-red-800">
-              Alternate - this person cannot receive a car unless they have
-              been added to the field. Checkout will ask for confirmation and
-              then change their type to Player.
-            </div>
-          )}
         <label className="block font-semibold mb-1">On Behalf Of</label>
         <input
           value={onBehalfOf}
@@ -858,10 +827,17 @@ export default function CheckOutPage() {
         />
 
         <button
+          type="button"
           onClick={submitCheckout}
-          className="bg-[#367C2B] hover:bg-[#2e6e24] text-white px-4 py-3 rounded w-full font-semibold"
+          className={`w-full rounded px-4 py-3 font-semibold text-white ${
+            isWithdrawnPlayer(selectedPerson)
+              ? "bg-red-700 hover:bg-red-800"
+              : "bg-[#367C2B] hover:bg-[#2e6e24]"
+          }`}
         >
-          Check Out Car
+          {isWithdrawnPlayer(selectedPerson)
+            ? "Warning: Confirm Withdrawn Player Checkout"
+            : "Check Out Car"}
         </button>
       </div>
     </main>

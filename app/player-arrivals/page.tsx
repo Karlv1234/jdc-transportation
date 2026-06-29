@@ -65,6 +65,7 @@ const ARRIVAL_METHODS = [
 
 const PERSON_TYPES = [
   "Player",
+  "Withdrawn Player",
   "PGA Staff",
   "Tournament Staff",
   "Transportation Staff",
@@ -305,8 +306,17 @@ function PassengerPicker({
                     <div className="font-semibold">
                       {person.first_name} {person.last_name}
                     </div>
-                    <div className="text-xs text-gray-500">
+                    <div
+                      className={`text-xs ${
+                        person.role === "Withdrawn Player"
+                          ? "font-bold text-red-700"
+                          : "text-gray-500"
+                      }`}
+                    >
                       {person.role || "No type"}
+                      {person.role === "Withdrawn Player"
+                        ? " — should not receive a car"
+                        : ""}
                     </div>
                     {existingLabel && (
                       <div className="mt-1 text-xs font-semibold text-orange-700">
@@ -869,17 +879,28 @@ export default function PlayerArrivalsPage() {
                   <div
                     key={passenger.id}
                     className={`flex items-center justify-between gap-3 rounded border p-3 ${
-                      passenger.checked_out
-                        ? "bg-gray-100 text-gray-500"
-                        : "bg-white"
+                      passenger.role === "Withdrawn Player"
+                        ? "border-red-500 bg-red-50"
+                        : passenger.checked_out
+                          ? "bg-gray-100 text-gray-500"
+                          : "bg-white"
                     }`}
                   >
                     <div>
                       <div className="font-semibold">
                         {passenger.first_name} {passenger.last_name}
                       </div>
-                      <div className="text-xs">
+                      <div
+                        className={`text-xs ${
+                          passenger.role === "Withdrawn Player"
+                            ? "font-bold text-red-700"
+                            : ""
+                        }`}
+                      >
                         {passenger.role || "No type"}
+                        {passenger.role === "Withdrawn Player"
+                          ? " — should not receive a car"
+                          : ""}
                         {passenger.checked_out ? " — checked out" : ""}
                       </div>
                     </div>
