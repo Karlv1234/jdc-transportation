@@ -40,6 +40,29 @@ function RequiredAsterisk() {
   return <span className="ml-1 font-bold text-red-600">*</span>;
 }
 
+function csvSafe(value: string | number | null | undefined) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadTextFile(
+  filename: string,
+  content: string,
+  mimeType: string
+) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
+}
+
 export default function PeoplePage() {
   const [people, setPeople] = useState<Person[]>([]);
   const [openCheckouts, setOpenCheckouts] = useState<OpenCheckout[]>([]);
@@ -189,6 +212,59 @@ export default function PeoplePage() {
     await loadData();
   }
 
+  function downloadPlayerCsv() {
+    const playerRows = people
+      .filter(
+        (person) =>
+          person.role === "Player" ||
+          person.role === "Withdrawn Player"
+      )
+      .sort((a, b) =>
+        `${a.last_name} ${a.first_name}`.localeCompare(
+          `${b.last_name} ${b.first_name}`
+        )
+      );
+
+    const headers = [
+      "First Name",
+      "Last Name",
+      "Player Status",
+      "Car Number(s)",
+      "Phone",
+      "Email",
+      "Notes",
+    ];
+
+    const rows = playerRows.map((person) => {
+      const carNumbers = [
+        ...new Set(checkedOutCarsByPerson.get(person.id) || []),
+      ].sort((a, b) => a - b);
+
+      return [
+        person.first_name,
+        person.last_name,
+        person.role || "Player",
+        carNumbers.join(", "),
+        person.phone || "",
+        person.email || "",
+        person.notes || "",
+      ];
+    });
+
+    const csv = [
+      headers.map(csvSafe).join(","),
+      ...rows.map((row) => row.map(csvSafe).join(",")),
+    ].join("\r\n");
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    downloadTextFile(
+      `jdc-player-information-${today}.csv`,
+      csv,
+      "text/csv;charset=utf-8"
+    );
+  }
+
   function beginEditPerson(person: Person) {
     setEditingPersonId(person.id);
     setEditForm({
@@ -294,6 +370,14 @@ export default function PeoplePage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={downloadPlayerCsv}
+            className="rounded bg-[#FFDE00] px-4 py-2 font-bold text-[#1F4E1A] hover:bg-yellow-300"
+          >
+            Download Player CSV
+          </button>
+
           <button
             type="button"
             onClick={loadData}
