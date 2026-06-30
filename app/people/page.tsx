@@ -49,9 +49,9 @@ export default function PeoplePage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [editingRolePersonId, setEditingRolePersonId] = useState<number | null>(null);
-  const [editingRole, setEditingRole] = useState("");
-  const [savingRolePersonId, setSavingRolePersonId] = useState<number | null>(null);
+  const [editingPersonId, setEditingPersonId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -189,30 +189,77 @@ export default function PeoplePage() {
     await loadData();
   }
 
-  function beginEditRole(person: Person) {
-    setEditingRolePersonId(person.id);
-    setEditingRole(person.role || "Misc");
+  function beginEditPerson(person: Person) {
+    setEditingPersonId(person.id);
+    setEditForm({
+      firstName: person.first_name || "",
+      lastName: person.last_name || "",
+      phone: person.phone || "",
+      email: person.email || "",
+      role: person.role || "Misc",
+      notes: person.notes || "",
+    });
   }
 
-  function cancelEditRole() {
-    setEditingRolePersonId(null);
-    setEditingRole("");
+  function cancelEditPerson() {
+    setEditingPersonId(null);
+    setEditForm(EMPTY_FORM);
   }
 
-  async function savePersonRole(personId: number) {
-    if (!editingRole) {
-      alert("Please choose a person type.");
+  function updateEditForm(
+    field: keyof typeof EMPTY_FORM,
+    value: string
+  ) {
+    setEditForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  async function savePersonDetails() {
+    if (editingPersonId === null) return;
+
+    const firstName = editForm.firstName.trim();
+    const lastName = editForm.lastName.trim();
+
+    if (!firstName || !lastName) {
+      alert("First and last name are required.");
       return;
     }
 
-    setSavingRolePersonId(personId);
+    const duplicate = people.find(
+      (person) =>
+        person.id !== editingPersonId &&
+        person.first_name.trim().toLowerCase() === firstName.toLowerCase() &&
+        person.last_name.trim().toLowerCase() === lastName.toLowerCase()
+    );
+
+    if (
+      duplicate &&
+      !window.confirm(
+        `${duplicate.first_name} ${duplicate.last_name} already exists. Save these changes anyway?`
+      )
+    ) {
+      return;
+    }
+
+    setSavingEdit(true);
+
+    const updatePayload = {
+      first_name: firstName,
+      last_name: lastName,
+      phone: editForm.phone.trim() || null,
+      email: editForm.email.trim() || null,
+      role: editForm.role,
+      notes: editForm.notes.trim() || null,
+    };
 
     const { error } = await supabase
       .from("people")
-      .update({ role: editingRole })
-      .eq("id", personId);
+      .update(updatePayload)
+      .eq("id", editingPersonId);
 
-    setSavingRolePersonId(null);
+    setSavingEdit(false);
 
     if (error) {
       alert(error.message);
@@ -220,14 +267,20 @@ export default function PeoplePage() {
     }
 
     setPeople((current) =>
-      current.map((person) =>
-        person.id === personId
-          ? { ...person, role: editingRole }
-          : person
-      )
+      current
+        .map((person) =>
+          person.id === editingPersonId
+            ? { ...person, ...updatePayload }
+            : person
+        )
+        .sort((a, b) =>
+          `${a.last_name} ${a.first_name}`.localeCompare(
+            `${b.last_name} ${b.first_name}`
+          )
+        )
     );
 
-    cancelEditRole();
+    cancelEditPerson();
   }
 
   return (
@@ -454,19 +507,7 @@ export default function PeoplePage() {
                       Type:
                     </span>
 
-                    {editingRolePersonId === person.id ? (
-                      <select
-                        value={editingRole}
-                        onChange={(event) => setEditingRole(event.target.value)}
-                        className="w-full rounded border bg-white p-2"
-                      >
-                        {ROLE_OPTIONS.map((role) => (
-                          <option key={role} value={role}>
-                            {role}
-                          </option>
-                        ))}
-                      </select>
-                    ) : person.role === "Withdrawn Player" ? (
+                    {person.role === "Withdrawn Player" ? (
                       <span className="inline-flex rounded-full bg-red-100 px-3 py-1 text-sm font-bold text-red-800">
                         Withdrawn Player
                       </span>
@@ -506,40 +547,170 @@ export default function PeoplePage() {
                   </div>
 
                   <div className="flex flex-wrap gap-2 md:justify-end">
-                    {editingRolePersonId === person.id ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => savePersonRole(person.id)}
-                          disabled={savingRolePersonId === person.id}
-                          className="rounded bg-[#367C2B] px-3 py-2 text-sm font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {savingRolePersonId === person.id ? "Saving..." : "Save"}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={cancelEditRole}
-                          disabled={savingRolePersonId === person.id}
-                          className="rounded bg-gray-200 px-3 py-2 text-sm font-semibold hover:bg-gray-300 disabled:opacity-60"
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => beginEditRole(person)}
-                        className="rounded bg-[#FFDE00] px-3 py-2 text-sm font-bold text-[#1F4E1A] hover:bg-yellow-300"
-                      >
-                        Edit Type
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => beginEditPerson(person)}
+                      className="rounded bg-[#FFDE00] px-3 py-2 text-sm font-bold text-[#1F4E1A] hover:bg-yellow-300"
+                    >
+                      Edit Person
+                    </button>
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {editingPersonId !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 md:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-person-title"
+        >
+          <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 bg-[#1F4E1A] px-5 py-4 text-white">
+              <div>
+                <h2 id="edit-person-title" className="text-xl font-bold">
+                  Edit Person
+                </h2>
+                <p className="mt-1 text-sm text-white/80">
+                  Update the player or staff member's full record.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={cancelEditPerson}
+                disabled={savingEdit}
+                className="rounded px-3 py-1 text-2xl leading-none hover:bg-white/15 disabled:opacity-50"
+                aria-label="Close editor"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block font-semibold">
+                    First Name
+                    <RequiredAsterisk />
+                  </label>
+                  <input
+                    value={editForm.firstName}
+                    onChange={(event) =>
+                      updateEditForm("firstName", event.target.value)
+                    }
+                    className="w-full rounded border p-3"
+                    autoComplete="given-name"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-semibold">
+                    Last Name
+                    <RequiredAsterisk />
+                  </label>
+                  <input
+                    value={editForm.lastName}
+                    onChange={(event) =>
+                      updateEditForm("lastName", event.target.value)
+                    }
+                    className="w-full rounded border p-3"
+                    autoComplete="family-name"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-semibold">
+                    Type of Person
+                    <RequiredAsterisk />
+                  </label>
+                  <select
+                    value={editForm.role}
+                    onChange={(event) =>
+                      updateEditForm("role", event.target.value)
+                    }
+                    className="w-full rounded border bg-white p-3"
+                  >
+                    {ROLE_OPTIONS.map((role) => (
+                      <option key={role} value={role}>
+                        {role}
+                      </option>
+                    ))}
+                  </select>
+
+                  {editForm.role === "Withdrawn Player" && (
+                    <div className="mt-2 rounded border border-red-400 bg-red-50 p-3 text-sm font-semibold text-red-800">
+                      This person will be flagged as withdrawn and the Check Out
+                      page will warn that they should not receive a car.
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="mb-1 block font-semibold">Phone</label>
+                  <input
+                    value={editForm.phone}
+                    onChange={(event) =>
+                      updateEditForm("phone", event.target.value)
+                    }
+                    type="tel"
+                    className="w-full rounded border p-3"
+                    autoComplete="tel"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-1 block font-semibold">Email</label>
+                  <input
+                    value={editForm.email}
+                    onChange={(event) =>
+                      updateEditForm("email", event.target.value)
+                    }
+                    type="email"
+                    className="w-full rounded border p-3"
+                    autoComplete="email"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-1 block font-semibold">Notes</label>
+                  <textarea
+                    value={editForm.notes}
+                    onChange={(event) =>
+                      updateEditForm("notes", event.target.value)
+                    }
+                    rows={5}
+                    className="w-full rounded border p-3"
+                    placeholder="Transportation notes, contact details, exceptions, or other information..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2 border-t bg-gray-50 px-5 py-4">
+              <button
+                type="button"
+                onClick={cancelEditPerson}
+                disabled={savingEdit}
+                className="rounded bg-gray-200 px-5 py-3 font-semibold hover:bg-gray-300 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={savePersonDetails}
+                disabled={savingEdit}
+                className="rounded bg-[#367C2B] px-5 py-3 font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {savingEdit ? "Saving..." : "Save Person"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>
