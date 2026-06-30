@@ -75,6 +75,7 @@ export default function PeoplePage() {
   const [editingPersonId, setEditingPersonId] = useState<number | null>(null);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingPerson, setDeletingPerson] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -290,6 +291,87 @@ export default function PeoplePage() {
       ...current,
       [field]: value,
     }));
+  }
+
+  async function deletePersonRecord() {
+    if (editingPersonId === null) return;
+
+    const person = people.find(
+      (currentPerson) => currentPerson.id === editingPersonId
+    );
+
+    if (!person) {
+      alert("The selected person could not be found.");
+      return;
+    }
+
+    const activeCars = checkedOutCarsByPerson.get(person.id) || [];
+
+    if (activeCars.length > 0) {
+      alert(
+        `${person.first_name} ${person.last_name} currently has car ${activeCars
+          .map((carNumber) => `#${carNumber}`)
+          .join(", ")} checked out. Check the car in before removing this person.`
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove ${person.first_name} ${person.last_name} from the database?\n\nThis removes the person from arrivals and the People page. Historical checkout records will be preserved without the live person link.`
+    );
+
+    if (!confirmed) return;
+
+    const typedConfirmation = window.prompt(
+      'Type DELETE to permanently remove this person.'
+    );
+
+    if (typedConfirmation !== "DELETE") {
+      alert("Removal cancelled.");
+      return;
+    }
+
+    setDeletingPerson(true);
+
+    const { data, error } = await supabase.rpc("delete_person_record", {
+      p_person_id: person.id,
+    });
+
+    setDeletingPerson(false);
+
+    if (error) {
+      alert(`Unable to remove person: ${error.message}`);
+      return;
+    }
+
+    const result = data as
+      | {
+          deleted?: boolean;
+          first_name?: string;
+          last_name?: string;
+        }
+      | null;
+
+    if (!result?.deleted) {
+      alert("The person was not removed.");
+      return;
+    }
+
+    setPeople((current) =>
+      current.filter((currentPerson) => currentPerson.id !== person.id)
+    );
+    setOpenCheckouts((current) =>
+      current.filter((checkout) => checkout.person_id !== person.id)
+    );
+    cancelEditPerson();
+
+    alert(
+      `${result.first_name || person.first_name} ${
+        result.last_name || person.last_name
+      } was removed from the database.`
+    );
+
+    await loadData();
   }
 
   async function savePersonDetails() {
@@ -681,7 +763,7 @@ export default function PeoplePage() {
               <button
                 type="button"
                 onClick={cancelEditPerson}
-                disabled={savingEdit}
+                disabled={savingEdit || deletingPerson}
                 className="rounded px-3 py-1 text-2xl leading-none hover:bg-white/15 disabled:opacity-50"
                 aria-label="Close editor"
               >
@@ -789,24 +871,35 @@ export default function PeoplePage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap justify-end gap-2 border-t bg-gray-50 px-5 py-4">
+            <div className="flex flex-col gap-3 border-t bg-gray-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <button
                 type="button"
-                onClick={cancelEditPerson}
-                disabled={savingEdit}
-                className="rounded bg-gray-200 px-5 py-3 font-semibold hover:bg-gray-300 disabled:opacity-50"
+                onClick={deletePersonRecord}
+                disabled={savingEdit || deletingPerson}
+                className="rounded border border-red-700 bg-white px-5 py-3 font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Cancel
+                {deletingPerson ? "Removing..." : "Remove Person"}
               </button>
 
-              <button
-                type="button"
-                onClick={savePersonDetails}
-                disabled={savingEdit}
-                className="rounded bg-[#367C2B] px-5 py-3 font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {savingEdit ? "Saving..." : "Save Person"}
-              </button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={cancelEditPerson}
+                  disabled={savingEdit || deletingPerson}
+                  className="rounded bg-gray-200 px-5 py-3 font-semibold hover:bg-gray-300 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={savePersonDetails}
+                  disabled={savingEdit || deletingPerson}
+                  className="rounded bg-[#367C2B] px-5 py-3 font-semibold text-white hover:bg-[#2e6e24] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {savingEdit ? "Saving..." : "Save Person"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
