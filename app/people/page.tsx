@@ -330,23 +330,32 @@ export default function PeoplePage() {
       notes: editForm.notes.trim() || null,
     };
 
-    const { error } = await supabase
+    const { data: updatedPerson, error } = await supabase
       .from("people")
       .update(updatePayload)
-      .eq("id", editingPersonId);
+      .eq("id", editingPersonId)
+      .select("id, first_name, last_name, phone, email, role, notes")
+      .maybeSingle();
 
     setSavingEdit(false);
 
     if (error) {
-      alert(error.message);
+      alert(`Unable to save person: ${error.message}`);
+      return;
+    }
+
+    if (!updatedPerson) {
+      alert(
+        "The person was not updated. This is usually caused by a Supabase update permission or Row Level Security policy. Run the supplied permission SQL, then try again."
+      );
       return;
     }
 
     setPeople((current) =>
       current
         .map((person) =>
-          person.id === editingPersonId
-            ? { ...person, ...updatePayload }
+          person.id === updatedPerson.id
+            ? (updatedPerson as Person)
             : person
         )
         .sort((a, b) =>
@@ -357,6 +366,11 @@ export default function PeoplePage() {
     );
 
     cancelEditPerson();
+    alert(
+      `${updatedPerson.first_name} ${updatedPerson.last_name} was updated to ${updatedPerson.role || "No type"}.`
+    );
+
+    await loadData();
   }
 
   return (
