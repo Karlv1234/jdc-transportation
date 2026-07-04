@@ -175,10 +175,20 @@ export default function CheckInPage() {
         <input
           value={carSearch}
           onChange={(e) => {
-            setCarSearch(e.target.value);
-            setSelectedVehicle(null);
+            const numbersOnly = e.target.value.replace(/\D/g, "");
+            setCarSearch(numbersOnly);
+
+            const exactMatch = vehicles.find(
+              (vehicle) =>
+                String(vehicle.car_number) === numbersOnly
+            );
+
+            setSelectedVehicle(exactMatch || null);
           }}
-          placeholder="Type car number..."
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
+          placeholder="Enter car number..."
           className="border rounded p-3 w-full"
           required
         />
