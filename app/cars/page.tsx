@@ -110,13 +110,9 @@ export default function CarsPage() {
     );
   }
 
-  const filteredVehicles = vehicles.filter((v) => {
-    const checkout = getCheckoutForVehicle(v);
-
-    const text =
-      `${v.car_number} ${v.make} ${v.model} ${v.type} ${v.color} ${v.vin} ${v.dealership} ${v.return_lot_category} ${v.current_location} ${v.status} ${checkout?.person_first_name} ${checkout?.person_last_name} ${checkout?.on_behalf_of}`.toLowerCase();
-
-    return text.includes(search.toLowerCase());
+  const filteredVehicles = vehicles.filter((vehicle) => {
+    const carNumber = String(vehicle.car_number);
+    return carNumber.includes(search);
   });
 
   function toggleSelected(id: number) {
@@ -305,8 +301,14 @@ export default function CarsPage() {
       <div className="bg-white rounded-lg shadow p-4 mb-4 border-t-4 border-[#367C2B]">
         <input
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search car #, model, color, person, VIN, dealership, return lot category..."
+          onChange={(e) => {
+            const numbersOnly = e.target.value.replace(/\D/g, "");
+            setSearch(numbersOnly);
+          }}
+          inputMode="numeric"
+          pattern="[0-9]*"
+          autoComplete="off"
+          placeholder="Enter car number..."
           className="border rounded p-3 w-full mb-3"
         />
 
