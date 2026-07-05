@@ -57,6 +57,24 @@ export default function AdminPage() {
             Open Vehicle Timeline
           </Link>
         </div>
+
+        <div className="bg-white rounded-lg shadow p-4 border-t-4 border-[#FFDE00]">
+          <h2 className="text-xl font-bold text-[#1F4E1A] mb-2">
+            Return Lot Audit
+          </h2>
+
+          <p className="text-sm text-gray-600 mb-4">
+            View the total number of cars at the Return Lot, grouped by Return
+            Lot Category, with the cars listed under each category.
+          </p>
+
+          <Link
+            href="/admin/return-lot-audit"
+            className="inline-block bg-[#1F4E1A] hover:bg-[#163a13] text-white px-4 py-3 rounded font-semibold"
+          >
+            Open Return Lot Audit
+          </Link>
+        </div>
       </div>
     </main>
   );
