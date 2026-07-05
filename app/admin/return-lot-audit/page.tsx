@@ -9,7 +9,6 @@ type Vehicle = {
   car_number: number;
   make: string | null;
   model: string | null;
-  car_model?: string | null;
   color: string | null;
   dealership: string | null;
   return_lot_category: string | null;
@@ -23,7 +22,7 @@ type CategoryGroup = {
 };
 
 function displayModel(vehicle: Vehicle) {
-  return vehicle.car_model || vehicle.model || "Unknown model";
+  return vehicle.model || "Unknown model";
 }
 
 function csvSafe(value: string | number | null | undefined) {
@@ -44,7 +43,7 @@ export default function ReturnLotAuditPage() {
     const { data, error: loadError } = await supabase
       .from("vehicles")
       .select(
-        "id, car_number, make, model, car_model, color, dealership, return_lot_category, current_location, status"
+        "id, car_number, make, model, color, dealership, return_lot_category, current_location, status"
       )
       .eq("current_location", "Return Lot")
       .order("car_number", { ascending: true });
